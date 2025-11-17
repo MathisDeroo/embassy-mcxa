@@ -30,6 +30,7 @@ pub enum Function {
 
 /// Logical level for GP pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Level {
     Low,
     High,
@@ -539,11 +540,11 @@ impl<'d> Flex<'d> {
     /// Put the pin into input mode.
     ///
     /// The pull setting is left unchanged.
-    pub fn set_as_input(&mut self, strength: DriveStrength, slew_rate: SlewRate) {
+    pub fn set_as_input(&mut self, pull: Pull, strength: DriveStrength, slew_rate: SlewRate) {
         let mask = self.mask();
         let gpio = self.gpio();
 
-        self.set_pull(Pull::None);
+        self.set_pull(pull);
         self.set_drive_strength(strength);
         self.set_slew_rate(slew_rate);
         self.set_enable_input_buffer();
@@ -706,13 +707,12 @@ pub struct Input<'d> {
 impl<'d> Input<'d> {
     /// Create a GPIO input driver for a [GpioPin].
     pub fn new(pin: Peri<'d, impl GpioPin>, 
-        initial: Level,
+        pull: Pull,
         strength: DriveStrength,
         slew_rate: SlewRate,
         ) -> Self {
         let mut flex = Flex::new(pin);
-        flex.set_level(initial);
-        flex.set_as_input(strength, slew_rate);
+        flex.set_as_input(pull, strength, slew_rate);
         Self { flex }
     }
 
