@@ -1,7 +1,9 @@
 #![no_std]
-// TODO(AJM): As of 2025-11-13, we need to do a pass to ensure safety docs
-// are complete prior to release.
-#![allow(clippy::missing_safety_doc)]
+#![allow(async_fn_in_trait)]
+#![doc = include_str!("../README.md")]
+
+// //! ## Feature flags
+// #![doc = document_features::document_features!(feature_label = r#"<span class="stab portability"><code>{feature}</code></span>"#)]
 
 pub mod clocks; // still provide clock helpers
 pub mod gpio;
@@ -113,10 +115,6 @@ embassy_hal_internal::peripherals!(
     P0_25,
     P0_26,
     P0_27,
-    P0_28,
-    P0_29,
-    P0_30,
-    P0_31,
 
     P1_0,
     P1_1,
@@ -178,12 +176,7 @@ embassy_hal_internal::peripherals!(
     P2_24,
     P2_25,
     P2_26,
-    P2_27,
-    P2_28,
-    P2_29,
-    P2_30,
-    P2_31,
-
+    
     P3_0,
     P3_1,
     P3_2,
@@ -225,63 +218,6 @@ embassy_hal_internal::peripherals!(
     P4_5,
     P4_6,
     P4_7,
-    P4_8,
-    P4_9,
-    P4_10,
-    P4_11,
-    P4_12,
-    P4_13,
-    P4_14,
-    P4_15,
-    P4_16,
-    P4_17,
-    P4_18,
-    P4_19,
-    P4_20,
-    P4_21,
-    P4_22,
-    P4_23,
-    P4_24,
-    P4_25,
-    P4_26,
-    P4_27,
-    P4_28,
-    P4_29,
-    P4_30,
-    P4_31,
-
-    P5_0,
-    P5_1,
-    P5_2,
-    P5_3,
-    P5_4,
-    P5_5,
-    P5_6,
-    P5_7,
-    P5_8,
-    P5_9,
-    P5_10,
-    P5_11,
-    P5_12,
-    P5_13,
-    P5_14,
-    P5_15,
-    P5_16,
-    P5_17,
-    P5_18,
-    P5_19,
-    P5_20,
-    P5_21,
-    P5_22,
-    P5_23,
-    P5_24,
-    P5_25,
-    P5_26,
-    P5_27,
-    P5_28,
-    P5_29,
-    P5_30,
-    P5_31,
 
     PKC0,
 

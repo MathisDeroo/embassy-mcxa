@@ -1,4 +1,4 @@
-//! GPIO driver built around a type-erased `Flex` pin, similar to other Embassy HALs.
+//! GP driver built around a type-erased `Flex` pin, similar to other Embassy HALs.
 //! The exported `Output`/`Input` drivers own a `Flex` so they no longer depend on the
 //! concrete pin type.
 
@@ -8,16 +8,70 @@ use core::marker::PhantomData;
 use embassy_hal_internal::{Peri, PeripheralType};
 use paste::paste;
 
-/// Logical level for GPIO pins.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Function {
+    /// Function 0
+    F0,
+    /// Function 1
+    F1,
+    /// Function 2
+    F2,
+    /// Function 3
+    F3,
+    /// Function 4
+    F4,
+    /// Function 5
+    F5,
+    /// Function 6
+    F6,
+    /// Function 7
+    F7,
+}
+
+/// Logical level for GP pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Level {
     Low,
     High,
 }
 
+impl From<bool> for Level {
+    fn from(val: bool) -> Self {
+        match val {
+            true => Self::High,
+            false => Self::Low,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Pull {
+    None,
+    Up,
+    Down,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum SlewRate {
+    Fast,
+    Slow,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum DriveStrength {
+    Normal,
+    Double,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Inverter {
+    Disabled,
+    Enabled,
+}
+
 pub type Gpio = crate::peripherals::GPIO0;
 
-/// Type-erased representation of a GPIO pin.
+/// Type-erased representation of a GP pin.
 pub struct AnyPin {
     port: usize,
     pin: usize,
@@ -51,6 +105,7 @@ impl AnyPin {
     }
 }
 
+/// Type-level trait implemented by concrete pin ZSTs.
 embassy_hal_internal::impl_peripheral!(AnyPin);
 
 trait SealedPin {
@@ -65,9 +120,23 @@ trait SealedPin {
     }
 
     fn gpio(&self) -> &'static crate::pac::gpio0::RegisterBlock;
+
+    fn port_reg(&self) -> &'static crate::pac::port0::RegisterBlock;
+
+    fn pcr_reg(&self) -> &'static crate::pac::port0::Pcr0;
+
+    fn set_function(&self, function: Function);
+
+    fn set_pull(&self, pull: Pull);
+
+    fn set_drive_strength(&self, strength: DriveStrength);
+
+    fn set_slew_rate(&self, slew_rate: SlewRate);
+
+    fn set_enable_input_buffer(&self);
 }
 
-/// GPIO pin trait.
+/// GP pin trait.
 #[allow(private_bounds)]
 pub trait GpioPin: SealedPin + Sized + PeripheralType + Into<AnyPin> + 'static {
     /// Type-erase the pin.
@@ -80,14 +149,130 @@ pub trait GpioPin: SealedPin + Sized + PeripheralType + Into<AnyPin> + 'static {
 }
 
 impl SealedPin for AnyPin {
-    #[inline]
     fn pin_port(&self) -> usize {
         self.port * 32 + self.pin
     }
 
-    #[inline]
     fn gpio(&self) -> &'static crate::pac::gpio0::RegisterBlock {
         self.gpio()
+    }
+
+    fn port_reg(&self) -> &'static crate::pac::port0::RegisterBlock {
+        match self.port() {
+            0 => unsafe { &*crate::pac::Port0::ptr() },
+            1 => unsafe { &*crate::pac::Port1::ptr() },
+            2 => unsafe { &*crate::pac::Port2::ptr() },
+            3 => unsafe { &*crate::pac::Port3::ptr() },
+            4 => unsafe { &*crate::pac::Port4::ptr() },
+            _ => panic!("Invalid port: {}", self.port),
+        }
+    }
+
+    fn pcr_reg(&self) -> &'static crate::pac::port0::Pcr0 {
+        let port_reg = self.port_reg();
+        match self.pin() {
+            0 => port_reg.pcr0(),
+            1 => port_reg.pcr1(),
+            2 => port_reg.pcr2(),
+            3 => port_reg.pcr3(),
+            4 => port_reg.pcr4(),
+            5 => port_reg.pcr5(),
+            6 => port_reg.pcr6(),
+            7 => port_reg.pcr7(),
+            8 => port_reg.pcr8(),
+            9 => port_reg.pcr9(),
+            10 => port_reg.pcr10(),
+            11 => port_reg.pcr11(),
+            12 => port_reg.pcr12(),
+            13 => port_reg.pcr13(),
+            14 => port_reg.pcr14(),
+            15 => port_reg.pcr15(),
+            16 => port_reg.pcr16(),
+            17 => port_reg.pcr17(),
+            18 => port_reg.pcr18(),
+            19 => port_reg.pcr19(),
+            20 => port_reg.pcr20(),
+            21 => port_reg.pcr21(),
+            22 => port_reg.pcr22(),
+            23 => port_reg.pcr23(),
+            24 => port_reg.pcr24(),
+            25 => port_reg.pcr25(),
+            26 => port_reg.pcr26(),
+            27 => port_reg.pcr27(),
+            28 => port_reg.pcr28(),
+            29 => port_reg.pcr29(),
+            30 => port_reg.pcr30(),
+            31 => port_reg.pcr31(),
+            _ => panic!("Invalid pin: {}", self.pin),
+        }
+    }
+
+
+    fn set_function(&self, function: Function) {
+        let mux_value = match function {
+            Function::F0 => 0,
+            Function::F1 => 1,
+            Function::F2 => 2,
+            Function::F3 => 3,
+            Function::F4 => 4,
+            Function::F5 => 5,
+            Function::F6 => 6,
+            Function::F7 => 7,
+        };
+
+        unsafe {
+            //let pcr = &port_reg.pcr[pin_index];
+            self.pcr_reg().modify(|_, w| {
+                w.mux().bits(mux_value)
+            });
+        }
+    }
+
+    fn set_pull(&self, pull: Pull) {
+        match pull {
+            Pull::None => {
+                self.pcr_reg().modify(|_, w| w.pe().pe0());
+            },
+            Pull::Up => {
+                self.pcr_reg().modify(|_, w| {
+                    w.pe().pe1();
+                    w.ps().ps1()
+                });
+            },
+            Pull::Down => {
+                self.pcr_reg().modify(|_, w| {
+                    w.pe().pe1();
+                    w.ps().ps0()
+                });
+            }
+        }
+    }
+
+    fn set_drive_strength(&self, strength: DriveStrength) {
+        match strength {
+            DriveStrength::Normal => {
+                self.pcr_reg().modify(|_, w| w.dse().dse0());
+
+            }
+            DriveStrength::Double => {
+                self.pcr_reg().modify(|_, w| w.dse().dse1());
+            }
+        }
+    }
+
+    fn set_slew_rate(&self, slew_rate: SlewRate) {
+        match slew_rate {
+            SlewRate::Slow => {
+                self.pcr_reg().modify(|_, w| w.sre().sre0());
+            }
+            SlewRate::Fast => {
+                self.pcr_reg().modify(|_, w| w.sre().sre1());
+            }
+        }
+    }
+
+    fn set_enable_input_buffer(&self) {
+        self.pcr_reg().modify(|_, w| w.ibe().ibe1());
     }
 }
 
@@ -95,37 +280,108 @@ impl GpioPin for AnyPin {}
 
 macro_rules! impl_pin {
     ($peri:ident, $port:expr, $pin:expr, $block:ident) => {
-        impl SealedPin for crate::peripherals::$peri {
-            #[inline]
-            fn pin_port(&self) -> usize {
-                $port * 32 + $pin
+        paste! {
+            impl SealedPin for crate::peripherals::$peri {
+                fn pin_port(&self) -> usize {
+                    $port * 32 + $pin
+                }
+
+                fn gpio(&self) -> &'static crate::pac::gpio0::RegisterBlock {
+                    unsafe { &*crate::pac::$block::ptr() }
+                }
+
+                fn port_reg(&self) -> &'static crate::pac::port0::RegisterBlock {
+                    unsafe { &*crate::pac::[<Port $port>]::ptr() }
+                }
+
+                fn pcr_reg(&self) -> &'static crate::pac::port0::Pcr0 {
+                    self.port_reg().[<pcr $pin>]()
+                }
+
+                fn set_function(&self, function: Function) {
+                    let mux_value = match function {
+                        Function::F0 => 0,
+                        Function::F1 => 1,
+                        Function::F2 => 2,
+                        Function::F3 => 3,
+                        Function::F4 => 4,
+                        Function::F5 => 5,
+                        Function::F6 => 6,
+                        Function::F7 => 7,
+                    };
+                    
+                    unsafe {
+                        let port_reg = &*crate::pac::[<Port $port>]::ptr();
+                        port_reg.[<pcr $pin>]().modify(|_, w| {
+                            w.mux().bits(mux_value)
+                        });
+                    }
+                }
+
+                fn set_pull(&self, pull: Pull) {
+                    let port_reg = unsafe {&*crate::pac::[<Port $port>]::ptr()};
+                    match pull {
+                        Pull::None => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| w.pe().pe0());
+                        },
+                        Pull::Up => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| {
+                                w.pe().pe1();
+                                w.ps().ps1()
+                            });
+                        },
+                        Pull::Down => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| {
+                                w.pe().pe1();
+                                w.ps().ps0()
+                            });
+                        }
+                    }
+                }
+
+                fn set_drive_strength(&self, strength: DriveStrength) {
+                    let port_reg = unsafe {&*crate::pac::[<Port $port>]::ptr()};
+                    match strength {
+                        DriveStrength::Normal => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| w.dse().dse0());
+
+                        }
+                        DriveStrength::Double => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| w.dse().dse1());
+                        }
+                    }
+                }
+
+                fn set_slew_rate(&self, slew_rate: SlewRate) {
+                    let port_reg = unsafe {&*crate::pac::[<Port $port>]::ptr()};
+                    match slew_rate {
+                        SlewRate::Slow => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| w.sre().sre0());
+                        }
+                        SlewRate::Fast => {
+                            port_reg.[<pcr $pin>]().modify(|_, w| w.sre().sre1());
+                        }
+                    }
+                }
+
+                fn set_enable_input_buffer(&self) {
+                    let port_reg = unsafe {&*crate::pac::[<Port $port>]::ptr()};
+                    port_reg.[<pcr $pin>]().modify(|_, w| w.ibe().ibe1());
+                }
             }
 
-            #[inline]
-            fn gpio(&self) -> &'static crate::pac::gpio0::RegisterBlock {
-                unsafe { &*crate::pac::$block::ptr() }
-            }
-        }
+            impl GpioPin for crate::peripherals::$peri {}
 
-        impl GpioPin for crate::peripherals::$peri {}
+            impl From<crate::peripherals::$peri> for AnyPin {
+                fn from(value: crate::peripherals::$peri) -> Self {
+                    value.degrade()
+                    }
+                }
 
-        impl From<crate::peripherals::$peri> for AnyPin {
-            fn from(value: crate::peripherals::$peri) -> Self {
-                value.degrade()
-            }
-        }
-
-        impl crate::peripherals::$peri {
-            /// Convenience helper to obtain a type-erased handle to this pin.
-            pub fn degrade(&self) -> AnyPin {
-                AnyPin::new(self.port(), self.pin(), self.gpio())
-            }
-
-            #[inline]
-            pub fn set_mux_gpio() {
-                paste! {
-                    let port = unsafe { crate::pac::[<Port $port>]::steal()};
-                    port.[<pcr $pin>]().write(|w| w.mux().mux00());
+                impl crate::peripherals::$peri {
+                /// Convenience helper to obtain a type-erased handle to this pin.
+                pub fn degrade(&self) -> AnyPin {
+                    AnyPin::new(self.port(), self.pin(), self.gpio())
                 }
             }
         }
@@ -140,10 +396,6 @@ impl_pin!(P0_4, 0, 4, Gpio0);
 impl_pin!(P0_5, 0, 5, Gpio0);
 impl_pin!(P0_6, 0, 6, Gpio0);
 impl_pin!(P0_7, 0, 7, Gpio0);
-impl_pin!(P0_8, 0, 8, Gpio0);
-impl_pin!(P0_9, 0, 9, Gpio0);
-impl_pin!(P0_10, 0, 10, Gpio0);
-impl_pin!(P0_11, 0, 11, Gpio0);
 impl_pin!(P0_12, 0, 12, Gpio0);
 impl_pin!(P0_13, 0, 13, Gpio0);
 impl_pin!(P0_14, 0, 14, Gpio0);
@@ -160,11 +412,7 @@ impl_pin!(P0_24, 0, 24, Gpio0);
 impl_pin!(P0_25, 0, 25, Gpio0);
 impl_pin!(P0_26, 0, 26, Gpio0);
 impl_pin!(P0_27, 0, 27, Gpio0);
-impl_pin!(P0_28, 0, 28, Gpio0);
-impl_pin!(P0_29, 0, 29, Gpio0);
-impl_pin!(P0_30, 0, 30, Gpio0);
-impl_pin!(P0_31, 0, 31, Gpio0);
-
+    
 impl_pin!(P1_0, 1, 0, Gpio1);
 impl_pin!(P1_1, 1, 1, Gpio1);
 impl_pin!(P1_2, 1, 2, Gpio1);
@@ -185,15 +433,6 @@ impl_pin!(P1_16, 1, 16, Gpio1);
 impl_pin!(P1_17, 1, 17, Gpio1);
 impl_pin!(P1_18, 1, 18, Gpio1);
 impl_pin!(P1_19, 1, 19, Gpio1);
-impl_pin!(P1_20, 1, 20, Gpio1);
-impl_pin!(P1_21, 1, 21, Gpio1);
-impl_pin!(P1_22, 1, 22, Gpio1);
-impl_pin!(P1_23, 1, 23, Gpio1);
-impl_pin!(P1_24, 1, 24, Gpio1);
-impl_pin!(P1_25, 1, 25, Gpio1);
-impl_pin!(P1_26, 1, 26, Gpio1);
-impl_pin!(P1_27, 1, 27, Gpio1);
-impl_pin!(P1_28, 1, 28, Gpio1);
 impl_pin!(P1_29, 1, 29, Gpio1);
 impl_pin!(P1_30, 1, 30, Gpio1);
 impl_pin!(P1_31, 1, 31, Gpio1);
@@ -225,11 +464,6 @@ impl_pin!(P2_23, 2, 23, Gpio2);
 impl_pin!(P2_24, 2, 24, Gpio2);
 impl_pin!(P2_25, 2, 25, Gpio2);
 impl_pin!(P2_26, 2, 26, Gpio2);
-impl_pin!(P2_27, 2, 27, Gpio2);
-impl_pin!(P2_28, 2, 28, Gpio2);
-impl_pin!(P2_29, 2, 29, Gpio2);
-impl_pin!(P2_30, 2, 30, Gpio2);
-impl_pin!(P2_31, 2, 31, Gpio2);
 
 impl_pin!(P3_0, 3, 0, Gpio3);
 impl_pin!(P3_1, 3, 1, Gpio3);
@@ -272,30 +506,6 @@ impl_pin!(P4_4, 4, 4, Gpio4);
 impl_pin!(P4_5, 4, 5, Gpio4);
 impl_pin!(P4_6, 4, 6, Gpio4);
 impl_pin!(P4_7, 4, 7, Gpio4);
-impl_pin!(P4_8, 4, 8, Gpio4);
-impl_pin!(P4_9, 4, 9, Gpio4);
-impl_pin!(P4_10, 4, 10, Gpio4);
-impl_pin!(P4_11, 4, 11, Gpio4);
-impl_pin!(P4_12, 4, 12, Gpio4);
-impl_pin!(P4_13, 4, 13, Gpio4);
-impl_pin!(P4_14, 4, 14, Gpio4);
-impl_pin!(P4_15, 4, 15, Gpio4);
-impl_pin!(P4_16, 4, 16, Gpio4);
-impl_pin!(P4_17, 4, 17, Gpio4);
-impl_pin!(P4_18, 4, 18, Gpio4);
-impl_pin!(P4_19, 4, 19, Gpio4);
-impl_pin!(P4_20, 4, 20, Gpio4);
-impl_pin!(P4_21, 4, 21, Gpio4);
-impl_pin!(P4_22, 4, 22, Gpio4);
-impl_pin!(P4_23, 4, 23, Gpio4);
-impl_pin!(P4_24, 4, 24, Gpio4);
-impl_pin!(P4_25, 4, 25, Gpio4);
-impl_pin!(P4_26, 4, 26, Gpio4);
-impl_pin!(P4_27, 4, 27, Gpio4);
-impl_pin!(P4_28, 4, 28, Gpio4);
-impl_pin!(P4_29, 4, 29, Gpio4);
-impl_pin!(P4_30, 4, 30, Gpio4);
-impl_pin!(P4_31, 4, 31, Gpio4);
 
 /// A flexible pin that can be configured as input or output.
 pub struct Flex<'d> {
@@ -309,6 +519,7 @@ impl<'d> Flex<'d> {
     /// The pin remains unmodified. The initial output level is unspecified, but
     /// can be changed before the pin is put into output mode.
     pub fn new(pin: Peri<'d, impl GpioPin>) -> Self {
+        pin.set_function(Function::F0);
         Self {
             pin: pin.into(),
             _marker: PhantomData,
@@ -328,20 +539,29 @@ impl<'d> Flex<'d> {
     /// Put the pin into input mode.
     ///
     /// The pull setting is left unchanged.
-    #[inline]
-    pub fn set_as_input(&mut self) {
+    pub fn set_as_input(&mut self, strength: DriveStrength, slew_rate: SlewRate) {
         let mask = self.mask();
         let gpio = self.gpio();
+
+        self.set_pull(Pull::None);
+        self.set_drive_strength(strength);
+        self.set_slew_rate(slew_rate);
+        self.set_enable_input_buffer();
+        
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
     }
 
     /// Put the pin into output mode.
     ///
     /// The initial output level is left unchanged.
-    #[inline]
-    pub fn set_as_output(&mut self) {
+    pub fn set_as_output(&mut self, strength: DriveStrength, slew_rate: SlewRate) {
         let mask = self.mask();
         let gpio = self.gpio();
+
+        self.set_pull(Pull::None);
+        self.set_drive_strength(strength);
+        self.set_slew_rate(slew_rate);
+
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() | mask) });
     }
 
@@ -395,19 +615,43 @@ impl<'d> Flex<'d> {
     pub fn is_set_low(&self) -> bool {
         !self.is_set_high()
     }
+
+    pub fn set_pull(&mut self, pull: Pull) {
+        self.pin.set_pull(pull);
+    }
+
+    pub fn set_drive_strength(&mut self, strength: DriveStrength) {
+        self.pin.set_drive_strength(strength);
+    }
+
+    pub fn set_slew_rate(&mut self, slew_rate: SlewRate) {
+        self.pin.set_slew_rate(slew_rate);
+    }
+
+    pub fn set_enable_input_buffer(&mut self) {
+        self.pin.set_enable_input_buffer();
+    }
+
+    pub fn get_level(&self) -> Level {
+        self.is_high().into()
+    }
 }
 
-/// GPIO output driver that owns a `Flex` pin.
+/// GP output driver that owns a `Flex` pin.
 pub struct Output<'d> {
     flex: Flex<'d>,
 }
 
 impl<'d> Output<'d> {
     /// Create a GPIO output driver for a [GpioPin] with the provided [Level].
-    pub fn new(pin: Peri<'d, impl GpioPin>, initial: Level) -> Self {
+    pub fn new(pin: Peri<'d, impl GpioPin>, 
+        initial: Level,
+        strength: DriveStrength,
+        slew_rate: SlewRate,
+        ) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_level(initial);
-        flex.set_as_output();
+        flex.set_as_output(strength, slew_rate);
         Self { flex }
     }
 
@@ -454,16 +698,21 @@ impl<'d> Output<'d> {
     }
 }
 
-/// GPIO input driver that owns a `Flex` pin.
+/// GP input driver that owns a `Flex` pin.
 pub struct Input<'d> {
     flex: Flex<'d>,
 }
 
 impl<'d> Input<'d> {
     /// Create a GPIO input driver for a [GpioPin].
-    pub fn new(pin: Peri<'d, impl GpioPin>) -> Self {
+    pub fn new(pin: Peri<'d, impl GpioPin>, 
+        initial: Level,
+        strength: DriveStrength,
+        slew_rate: SlewRate,
+        ) -> Self {
         let mut flex = Flex::new(pin);
-        flex.set_as_input();
+        flex.set_level(initial);
+        flex.set_as_input(strength, slew_rate);
         Self { flex }
     }
 
@@ -483,6 +732,10 @@ impl<'d> Input<'d> {
     #[inline]
     pub fn into_flex(self) -> Flex<'d> {
         self.flex
+    }
+
+    pub fn get_level(&self) -> Level {
+        self.flex.get_level()
     }
 }
 
