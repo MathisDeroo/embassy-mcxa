@@ -4,7 +4,8 @@
 use embassy_executor::Spawner;
 use embassy_mcxa::bind_interrupts;
 use embassy_time::Timer;
-use hal::gpio::{Level, SlewRate, DriveStrength, Output};
+use hal::gpio::{Level, Output};
+use hal::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse};
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
 
 // Bind only OS_EVENT for timer interrupts
@@ -25,9 +26,9 @@ async fn main(_spawner: Spawner) {
     // Initialize embassy-time global driver backed by OSTIMER0
     hal::ostimer::time_driver::init(hal::config::Config::default().time_interrupt_priority, 1_000_000);
 
-    let mut red = Output::new(p.P3_18, Level::High, DriveStrength::Normal, SlewRate::Fast);
-    let mut green = Output::new(p.P3_19, Level::High, DriveStrength::Normal, SlewRate::Fast);
-    let mut blue = Output::new(p.P3_21, Level::High, DriveStrength::Normal, SlewRate::Fast);
+    let mut red = Output::new(p.P3_18, Level::High, Dse::Dse0, Sre::Sre0);
+    let mut green = Output::new(p.P3_19, Level::High, Dse::Dse0, Sre::Sre0);
+    let mut blue = Output::new(p.P3_21, Level::High, Dse::Dse0, Sre::Sre0);
 
     loop {
         defmt::info!("Toggle LEDs");
