@@ -1,4 +1,4 @@
-//! GP driver built around a type-erased `Flex` pin, similar to other Embassy HALs.
+//! GPIO driver built around a type-erased `Flex` pin, similar to other Embassy HALs.
 //! The exported `Output`/`Input` drivers own a `Flex` so they no longer depend on the
 //! concrete pin type.
 
@@ -10,7 +10,7 @@ use paste::paste;
 
 use crate::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse};
 
-/// Logical level for GP pins.
+/// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Level {
@@ -280,6 +280,10 @@ impl_pin!(P0_4, 0, 4, Gpio0);
 impl_pin!(P0_5, 0, 5, Gpio0);
 impl_pin!(P0_6, 0, 6, Gpio0);
 impl_pin!(P0_7, 0, 7, Gpio0);
+impl_pin!(P0_8, 0, 8, Gpio0);
+impl_pin!(P0_9, 0, 9, Gpio0);
+impl_pin!(P0_10, 0, 10, Gpio0);
+impl_pin!(P0_11, 0, 11, Gpio0);
 impl_pin!(P0_12, 0, 12, Gpio0);
 impl_pin!(P0_13, 0, 13, Gpio0);
 impl_pin!(P0_14, 0, 14, Gpio0);
@@ -296,6 +300,10 @@ impl_pin!(P0_24, 0, 24, Gpio0);
 impl_pin!(P0_25, 0, 25, Gpio0);
 impl_pin!(P0_26, 0, 26, Gpio0);
 impl_pin!(P0_27, 0, 27, Gpio0);
+impl_pin!(P0_28, 0, 28, Gpio0);
+impl_pin!(P0_29, 0, 29, Gpio0);
+impl_pin!(P0_30, 0, 30, Gpio0);
+impl_pin!(P0_31, 0, 31, Gpio0);
     
 impl_pin!(P1_0, 1, 0, Gpio1);
 impl_pin!(P1_1, 1, 1, Gpio1);
@@ -317,6 +325,15 @@ impl_pin!(P1_16, 1, 16, Gpio1);
 impl_pin!(P1_17, 1, 17, Gpio1);
 impl_pin!(P1_18, 1, 18, Gpio1);
 impl_pin!(P1_19, 1, 19, Gpio1);
+impl_pin!(P1_20, 1, 20, Gpio1);
+impl_pin!(P1_21, 1, 21, Gpio1);
+impl_pin!(P1_22, 1, 22, Gpio1);
+impl_pin!(P1_23, 1, 23, Gpio1);
+impl_pin!(P1_24, 1, 24, Gpio1);
+impl_pin!(P1_25, 1, 25, Gpio1);
+impl_pin!(P1_26, 1, 26, Gpio1);
+impl_pin!(P1_27, 1, 27, Gpio1);
+impl_pin!(P1_28, 1, 28, Gpio1);
 impl_pin!(P1_29, 1, 29, Gpio1);
 impl_pin!(P1_30, 1, 30, Gpio1);
 impl_pin!(P1_31, 1, 31, Gpio1);
@@ -348,6 +365,12 @@ impl_pin!(P2_23, 2, 23, Gpio2);
 impl_pin!(P2_24, 2, 24, Gpio2);
 impl_pin!(P2_25, 2, 25, Gpio2);
 impl_pin!(P2_26, 2, 26, Gpio2);
+impl_pin!(P2_27, 2, 27, Gpio2);
+impl_pin!(P2_28, 2, 28, Gpio2);
+impl_pin!(P2_29, 2, 29, Gpio2);
+impl_pin!(P2_30, 2, 30, Gpio2);
+impl_pin!(P2_31, 2, 31, Gpio2);
+
 
 impl_pin!(P3_0, 3, 0, Gpio3);
 impl_pin!(P3_1, 3, 1, Gpio3);
@@ -390,6 +413,30 @@ impl_pin!(P4_4, 4, 4, Gpio4);
 impl_pin!(P4_5, 4, 5, Gpio4);
 impl_pin!(P4_6, 4, 6, Gpio4);
 impl_pin!(P4_7, 4, 7, Gpio4);
+impl_pin!(P4_8, 4, 8, Gpio4);
+impl_pin!(P4_9, 4, 9, Gpio4);
+impl_pin!(P4_10, 4, 10, Gpio4);
+impl_pin!(P4_11, 4, 11, Gpio4);
+impl_pin!(P4_12, 4, 12, Gpio4);
+impl_pin!(P4_13, 4, 13, Gpio4);
+impl_pin!(P4_14, 4, 14, Gpio4);
+impl_pin!(P4_15, 4, 15, Gpio4);
+impl_pin!(P4_16, 4, 16, Gpio4);
+impl_pin!(P4_17, 4, 17, Gpio4);
+impl_pin!(P4_18, 4, 18, Gpio4);
+impl_pin!(P4_19, 4, 19, Gpio4);
+impl_pin!(P4_20, 4, 20, Gpio4);
+impl_pin!(P4_21, 4, 21, Gpio4);
+impl_pin!(P4_22, 4, 22, Gpio4);
+impl_pin!(P4_23, 4, 23, Gpio4);
+impl_pin!(P4_24, 4, 24, Gpio4);
+impl_pin!(P4_25, 4, 25, Gpio4);
+impl_pin!(P4_26, 4, 26, Gpio4);
+impl_pin!(P4_27, 4, 27, Gpio4);
+impl_pin!(P4_28, 4, 28, Gpio4);
+impl_pin!(P4_29, 4, 29, Gpio4);
+impl_pin!(P4_30, 4, 30, Gpio4);
+impl_pin!(P4_31, 4, 31, Gpio4);
 
 /// A flexible pin that can be configured as input or output.
 pub struct Flex<'d> {
@@ -423,13 +470,10 @@ impl<'d> Flex<'d> {
     /// Put the pin into input mode.
     ///
     /// The pull setting is left unchanged.
-    pub fn set_as_input(&mut self, pull_enable: Pe, pull_select: Ps, strength: Dse, slew_rate: Sre) {
+    pub fn set_as_input(&mut self) {
         let mask = self.mask();
         let gpio = self.gpio();
 
-        self.set_pull(pull_enable, pull_select);
-        self.set_drive_strength(strength);
-        self.set_slew_rate(slew_rate);
         self.set_enable_input_buffer();
         
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
@@ -438,13 +482,11 @@ impl<'d> Flex<'d> {
     /// Put the pin into output mode.
     ///
     /// The initial output level is left unchanged.
-    pub fn set_as_output(&mut self, strength: Dse, slew_rate: Sre) {
+    pub fn set_as_output(&mut self) {
         let mask = self.mask();
         let gpio = self.gpio();
 
         self.set_pull(Pe::Pe0, Ps::Ps0);
-        self.set_drive_strength(strength);
-        self.set_slew_rate(slew_rate);
 
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() | mask) });
     }
@@ -521,7 +563,7 @@ impl<'d> Flex<'d> {
     }
 }
 
-/// GP output driver that owns a `Flex` pin.
+/// GPIO output driver that owns a `Flex` pin.
 pub struct Output<'d> {
     flex: Flex<'d>,
 }
@@ -535,7 +577,9 @@ impl<'d> Output<'d> {
         ) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_level(initial);
-        flex.set_as_output(strength, slew_rate);
+        flex.set_as_output();
+        flex.set_drive_strength(strength);
+        flex.set_slew_rate(slew_rate);
         Self { flex }
     }
 
@@ -582,7 +626,7 @@ impl<'d> Output<'d> {
     }
 }
 
-/// GP input driver that owns a `Flex` pin.
+/// GPIO input driver that owns a `Flex` pin.
 pub struct Input<'d> {
     flex: Flex<'d>,
 }
@@ -596,7 +640,10 @@ impl<'d> Input<'d> {
         slew_rate: Sre,
         ) -> Self {
         let mut flex = Flex::new(pin);
-        flex.set_as_input(pull_enable, pull_select, strength, slew_rate);
+        flex.set_as_input();
+        flex.set_drive_strength(strength);
+        flex.set_slew_rate(slew_rate);
+        flex.set_pull(pull_enable, pull_select);
         Self { flex }
     }
 
