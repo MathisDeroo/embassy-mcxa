@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use embassy_hal_internal::{Peri, PeripheralType};
 use paste::paste;
 
-use crate::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse};
+use crate::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse, Inv};
 
 /// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -23,6 +23,68 @@ impl From<bool> for Level {
         match val {
             true => Self::High,
             false => Self::Low,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Pull {
+    Disabled,
+    Up,
+    Down,
+}
+
+impl From<Pull> for (Pe, Ps) {
+    fn from(pull: Pull) -> Self {
+        match pull {
+            Pull::Disabled => (Pe::Pe0, Ps::Ps0),
+            Pull::Up => (Pe::Pe1, Ps::Ps1),
+            Pull::Down => (Pe::Pe1, Ps::Ps0),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum SlewRate {
+    Fast,
+    Slow,
+}
+
+impl From<SlewRate> for Sre {
+    fn from(slew_rate: SlewRate) -> Self {
+        match slew_rate {
+            SlewRate::Fast => Sre::Sre0,
+            SlewRate::Slow => Sre::Sre1,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum DriveStrength {
+    Normal,
+    Double,
+}
+
+impl From<DriveStrength> for Dse {
+    fn from(strength: DriveStrength) -> Self {
+        match strength {
+            DriveStrength::Normal => Dse::Dse0,
+            DriveStrength::Double => Dse::Dse1,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Inverter {
+    Disabled,
+    Enabled,
+}
+
+impl From<Inverter> for Inv {
+    fn from(strength: Inverter) -> Self {
+        match strength {
+            Inverter::Disabled => Inv::Inv0,
+            Inverter::Enabled => Inv::Inv1,
         }
     }
 }
@@ -85,7 +147,7 @@ trait SealedPin {
 
     fn set_function(&self, function: Mux);
 
-    fn set_pull(&self, pull_enable: Pe, pull_select: Ps);
+    fn set_pull(&self, pull: Pull);
 
     fn set_drive_strength(&self, strength: Dse);
 
@@ -170,15 +232,13 @@ impl SealedPin for AnyPin {
         self.pcr_reg().modify(|_, w| w.mux().variant(function));
     }
 
-    fn set_pull(&self, pull_enable: Pe, pull_select: Ps) {
-        if pull_enable == Pe::Pe0 {
-            self.pcr_reg().modify(|_, w| w.pe().pe0());
-        } else {
-            self.pcr_reg().modify(|_, w| {
-                w.pe().pe1();
-                w.ps().variant(pull_select)
-            });
-        }
+    fn set_pull(&self, pull: Pull) {
+        let (pull_enable, pull_select) = pull.into();
+        self.pcr_reg().modify(|_, w| {
+            w.pe().variant(pull_enable);
+            w.ps().variant(pull_select)
+        });
+
     }
 
     fn set_drive_strength(&self, strength: Dse) {
@@ -225,17 +285,13 @@ macro_rules! impl_pin {
                     }
                 }
 
-                fn set_pull(&self, pull_enable: Pe, pull_select: Ps) {
+                fn set_pull(&self, pull: Pull) {
                     let port_reg = unsafe {&*crate::pac::[<Port $port>]::ptr()};
-
-                    if pull_enable == Pe::Pe0 {
-                         port_reg.[<pcr $pin>]().modify(|_, w| w.pe().pe0());
-                    } else {
-                         port_reg.[<pcr $pin>]().modify(|_, w| {
-                            w.pe().pe1();
-                            w.ps().variant(pull_select)
-                        });
-                    }
+                    let (pull_enable, pull_select) = pull.into();
+                    port_reg.[<pcr $pin>]().modify(|_, w| {
+                        w.pe().variant(pull_enable);
+                        w.ps().variant(pull_select)
+                    });
                 }
 
                 fn set_drive_strength(&self, strength: Dse) {
@@ -259,8 +315,8 @@ macro_rules! impl_pin {
             impl From<crate::peripherals::$peri> for AnyPin {
                 fn from(value: crate::peripherals::$peri) -> Self {
                     value.degrade()
-                    }
                 }
+            }
 
                 impl crate::peripherals::$peri {
                 /// Convenience helper to obtain a type-erased handle to this pin.
@@ -486,7 +542,7 @@ impl<'d> Flex<'d> {
         let mask = self.mask();
         let gpio = self.gpio();
 
-        self.set_pull(Pe::Pe0, Ps::Ps0);
+        self.set_pull(Pull::Disabled);
 
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() | mask) });
     }
@@ -542,16 +598,16 @@ impl<'d> Flex<'d> {
         !self.is_set_high()
     }
 
-    pub fn set_pull(&mut self, pull_enable: Pe, pull_select: Ps) {
-        self.pin.set_pull(pull_enable, pull_select);
+    pub fn set_pull(&mut self, pull_select: Pull) {
+        self.pin.set_pull(pull_select);
     }
 
-    pub fn set_drive_strength(&mut self, strength: Dse) {
-        self.pin.set_drive_strength(strength);
+    pub fn set_drive_strength(&mut self, strength: DriveStrength) {
+        self.pin.set_drive_strength(strength.into());
     }
 
-    pub fn set_slew_rate(&mut self, slew_rate: Sre) {
-        self.pin.set_slew_rate(slew_rate);
+    pub fn set_slew_rate(&mut self, slew_rate: SlewRate) {
+        self.pin.set_slew_rate(slew_rate.into());
     }
 
     pub fn set_enable_input_buffer(&mut self) {
@@ -572,8 +628,8 @@ impl<'d> Output<'d> {
     /// Create a GPIO output driver for a [GpioPin] with the provided [Level].
     pub fn new(pin: Peri<'d, impl GpioPin>, 
         initial: Level,
-        strength: Dse,
-        slew_rate: Sre,
+        strength: DriveStrength,
+        slew_rate: SlewRate,
         ) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_level(initial);
@@ -634,16 +690,15 @@ pub struct Input<'d> {
 impl<'d> Input<'d> {
     /// Create a GPIO input driver for a [GpioPin].
     pub fn new(pin: Peri<'d, impl GpioPin>, 
-        pull_enable: Pe,
-        pull_select: Ps,
-        strength: Dse,
-        slew_rate: Sre,
+        pull_select: Pull,
+        strength: DriveStrength,
+        slew_rate: SlewRate,
         ) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_as_input();
         flex.set_drive_strength(strength);
         flex.set_slew_rate(slew_rate);
-        flex.set_pull(pull_enable, pull_select);
+        flex.set_pull(pull_select);
         Self { flex }
     }
 
