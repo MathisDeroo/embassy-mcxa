@@ -2,7 +2,6 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use embassy_mcxa::bind_interrupts;
 use embassy_time::Timer;
 use hal::gpio::{DriveStrength, Input, Pull, SlewRate};
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
@@ -13,7 +12,7 @@ async fn main(_spawner: Spawner) {
 
     defmt::info!("Button example");
 
-    let mut monitor = Input::new(p.P1_7, Pull::Disabled, DriveStrength::Normal, SlewRate::Slow);
+    let monitor = Input::new(p.P1_7, Pull::Disabled, DriveStrength::Normal, SlewRate::Slow);
 
     loop {
         defmt::info!("Pin level is {:?}", monitor.get_level());
