@@ -446,7 +446,7 @@ pub struct Gpio4;
 pub const GPIO4: Gpio4  = Gpio4;
 
 impl InterruptExt for Gpio4  {
-    /// Clear any pending GPIO2 in NVIC.
+    /// Clear any pending GPIO4 in NVIC.
     #[inline]
     fn unpend(&self) {
         cortex_m::peripheral::NVIC::unpend(Interrupt::GPIO4);

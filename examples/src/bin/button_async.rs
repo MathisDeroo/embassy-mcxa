@@ -6,8 +6,6 @@ use embassy_time::Timer;
 use hal::gpio::{DriveStrength, Input, Pull, SlewRate};
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
 
-use hal::interrupt::{InterruptExt};
-
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = hal::init(hal::config::Config::default());
@@ -15,14 +13,6 @@ async fn main(_spawner: Spawner) {
     defmt::info!("GPIO interrupt example");
 
     let mut pin = Input::new(p.P1_7, Pull::Up, DriveStrength::Normal, SlewRate::Fast);
-
-    unsafe {
-        hal::interrupt::GPIO1.enable();
-    }
-
-    unsafe {
-        cortex_m::interrupt::enable();
-    }
 
     let mut press_count = 0u32;
 

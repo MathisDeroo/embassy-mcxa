@@ -10,11 +10,27 @@ use core::task::{Context, Poll};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use embassy_sync::waitqueue::AtomicWaker;
-use embassy_hal_internal::{Peri, PeripheralType};
+use embassy_hal_internal::{Peri, PeripheralType, interrupt::InterruptExt};
 use paste::paste;
 
 use crate::pac::interrupt;
 use crate::pac::port0::pcr0::{Dse, Inv, Mux, Pe, Ps, Sre};
+
+struct BitIter(u32);
+
+impl Iterator for BitIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.trailing_zeros() {
+            32 => None,
+            b => {
+                self.0 &= !(1 << b);
+                Some(b as usize)
+            }
+        }
+    }
+}
 
 const PORT_COUNT: usize = 5;
 
@@ -31,6 +47,17 @@ pub enum InterruptTrigger {
     LevelHigh,
 }
 
+pub(crate) unsafe fn init() {
+    interrupt::GPIO0.enable();
+    interrupt::GPIO1.enable();
+    interrupt::GPIO2.enable();
+    interrupt::GPIO3.enable();
+    interrupt::GPIO4.enable();
+
+    cortex_m::interrupt::enable();
+}
+
+#[cfg(feature = "rt")]
 fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterBlock) {
     let gpio = unsafe { &*gpio_base };
     let isfr = gpio.isfr0().read().bits();
@@ -45,41 +72,43 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
         }
 
         // Disable all pin interrupts that fired to prevent re-triggering
-        for pin in 0..32 {
-            if (isfr & (1 << pin)) != 0 {
-                gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
-            }
+        for pin in BitIter(isfr) {
+            gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
         }
 
         INTERRUPT_DETECTED[port_index].store(true, Ordering::Relaxed);
     }
 }
 
+#[cfg(feature = "rt")]
 #[interrupt]
 fn GPIO0() {
     irq_handler(0, crate::pac::Gpio0::ptr());
 }
 
+#[cfg(feature = "rt")]
 #[interrupt]
 fn GPIO1() {
     irq_handler(1, crate::pac::Gpio1::ptr());
 }
 
+#[cfg(feature = "rt")]
 #[interrupt]
 fn GPIO2() {
     irq_handler(2, crate::pac::Gpio2::ptr());
 }
 
+#[cfg(feature = "rt")]
 #[interrupt]
 fn GPIO3() {
     irq_handler(3, crate::pac::Gpio3::ptr());
 }
 
+#[cfg(feature = "rt")]
 #[interrupt]
 fn GPIO4() {
     irq_handler(4, crate::pac::Gpio4::ptr());
 }
-
 
 /// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -869,7 +898,7 @@ impl<'d> Future for InputFuture<'d> {
 
         waker.register(cx.waker());
 
-        // Double check that the pin interrut has been disabled by IRQ handler
+        // Double check that the pin interrupt has been disabled by IRQ handler
         if self.pin.gpio().icr(self.pin.pin()).read().bits() & (1 << self.pin.pin()) == 0 {
             if INTERRUPT_DETECTED[self.pin.port()].swap(false, Ordering::Relaxed) {
                 Poll::Ready(())
