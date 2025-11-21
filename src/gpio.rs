@@ -6,11 +6,11 @@ use core::convert::Infallible;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin as FuturePin;
-use core::task::{Context, Poll};
 use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{Context, Poll};
 
-use embassy_sync::waitqueue::AtomicWaker;
 use embassy_hal_internal::{Peri, PeripheralType};
+use embassy_sync::waitqueue::AtomicWaker;
 use paste::paste;
 
 use crate::pac::interrupt;
@@ -79,7 +79,6 @@ fn GPIO3() {
 fn GPIO4() {
     irq_handler(4, crate::pac::Gpio4::ptr());
 }
-
 
 /// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -828,7 +827,6 @@ impl<'d> Input<'d> {
     }
 }
 
-
 struct InputFuture<'d> {
     pin: Peri<'d, AnyPin>,
 }
@@ -854,7 +852,6 @@ impl<'d> InputFuture<'d> {
     }
 }
 
-
 impl<'d> Future for InputFuture<'d> {
     type Output = ();
 
@@ -876,12 +873,11 @@ impl<'d> Future for InputFuture<'d> {
             } else {
                 Poll::Pending
             }
-        }
-        else {
+        } else {
             Poll::Pending
         }
     }
- }
+}
 
 // Both embedded_hal 0.2 and 1.0 must be supported by embassy HALs.
 impl embedded_hal_02::digital::v2::InputPin for Flex<'_> {

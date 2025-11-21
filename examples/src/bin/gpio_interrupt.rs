@@ -4,9 +4,8 @@
 use embassy_executor::Spawner;
 use embassy_time::Timer;
 use hal::gpio::{DriveStrength, Input, Pull, SlewRate};
+use hal::interrupt::InterruptExt;
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
-
-use hal::interrupt::{InterruptExt};
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {

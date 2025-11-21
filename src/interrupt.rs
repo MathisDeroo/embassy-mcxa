@@ -291,9 +291,9 @@ impl InterruptExt for Adc {
 }
 
 pub struct Gpio0;
-pub const GPIO0: Gpio0  = Gpio0;
+pub const GPIO0: Gpio0 = Gpio0;
 
-impl InterruptExt for Gpio0  {
+impl InterruptExt for Gpio0 {
     /// Clear any pending GPIO0 in NVIC.
     #[inline]
     fn unpend(&self) {
@@ -329,9 +329,9 @@ impl InterruptExt for Gpio0  {
 }
 
 pub struct Gpio1;
-pub const GPIO1: Gpio1  = Gpio1;
+pub const GPIO1: Gpio1 = Gpio1;
 
-impl InterruptExt for Gpio1  {
+impl InterruptExt for Gpio1 {
     /// Clear any pending GPIO1 in NVIC.
     #[inline]
     fn unpend(&self) {
@@ -367,9 +367,9 @@ impl InterruptExt for Gpio1  {
 }
 
 pub struct Gpio2;
-pub const GPIO2: Gpio2  = Gpio2;
+pub const GPIO2: Gpio2 = Gpio2;
 
-impl InterruptExt for Gpio2  {
+impl InterruptExt for Gpio2 {
     /// Clear any pending GPIO2 in NVIC.
     #[inline]
     fn unpend(&self) {
@@ -405,9 +405,9 @@ impl InterruptExt for Gpio2  {
 }
 
 pub struct Gpio3;
-pub const GPIO3: Gpio3  = Gpio3;
+pub const GPIO3: Gpio3 = Gpio3;
 
-impl InterruptExt for Gpio3  {
+impl InterruptExt for Gpio3 {
     /// Clear any pending GPIO3 in NVIC.
     #[inline]
     fn unpend(&self) {
@@ -443,9 +443,9 @@ impl InterruptExt for Gpio3  {
 }
 
 pub struct Gpio4;
-pub const GPIO4: Gpio4  = Gpio4;
+pub const GPIO4: Gpio4 = Gpio4;
 
-impl InterruptExt for Gpio4  {
+impl InterruptExt for Gpio4 {
     /// Clear any pending GPIO2 in NVIC.
     #[inline]
     fn unpend(&self) {
