@@ -96,12 +96,19 @@ pub struct AnyPin {
     port: usize,
     pin: usize,
     gpio: &'static crate::pac::gpio0::RegisterBlock,
+    port_reg: &'static crate::pac::port0::RegisterBlock,
+    pcr_reg: &'static crate::pac::port0::Pcr0,
 }
 
 impl AnyPin {
     /// Create an `AnyPin` from raw components.
-    pub fn new(port: usize, pin: usize, gpio: &'static crate::pac::gpio0::RegisterBlock) -> Self {
-        Self { port, pin, gpio }
+    pub fn new(port: usize, 
+               pin: usize, 
+               gpio: &'static crate::pac::gpio0::RegisterBlock,
+               port_reg: &'static crate::pac::port0::RegisterBlock,
+               pcr_reg: &'static crate::pac::port0::Pcr0
+               ) -> Self {
+        Self { port, pin, gpio, port_reg, pcr_reg }
     }
 
     #[inline(always)]
@@ -122,6 +129,16 @@ impl AnyPin {
     #[inline(always)]
     pub fn pin_index(&self) -> usize {
         self.pin
+    }
+
+    #[inline(always)]
+    fn port_reg(&self) -> &'static crate::pac::port0::RegisterBlock {
+        self.port_reg
+    }
+
+    #[inline(always)]
+    fn pcr_reg(&self) -> &'static crate::pac::port0::Pcr0 {
+        self.pcr_reg
     }
 }
 
@@ -163,7 +180,7 @@ pub trait GpioPin: SealedPin + Sized + PeripheralType + Into<AnyPin> + 'static {
         // SAFETY: This is only called within the GpioPin trait, which is only
         // implemented within this module on valid pin peripherals and thus
         // has been verified to be correct.
-        AnyPin::new(self.port(), self.pin(), self.gpio())
+        AnyPin::new(self.port(), self.pin(), self.gpio(), self.port_reg(), self.pcr_reg())
     }
 }
 
@@ -177,53 +194,11 @@ impl SealedPin for AnyPin {
     }
 
     fn port_reg(&self) -> &'static crate::pac::port0::RegisterBlock {
-        match self.port() {
-            0 => unsafe { &*crate::pac::Port0::ptr() },
-            1 => unsafe { &*crate::pac::Port1::ptr() },
-            2 => unsafe { &*crate::pac::Port2::ptr() },
-            3 => unsafe { &*crate::pac::Port3::ptr() },
-            4 => unsafe { &*crate::pac::Port4::ptr() },
-            _ => panic!("Invalid port: {}", self.port),
-        }
+        self.port_reg()
     }
 
     fn pcr_reg(&self) -> &'static crate::pac::port0::Pcr0 {
-        let port_reg = self.port_reg();
-        match self.pin() {
-            0 => port_reg.pcr0(),
-            1 => port_reg.pcr1(),
-            2 => port_reg.pcr2(),
-            3 => port_reg.pcr3(),
-            4 => port_reg.pcr4(),
-            5 => port_reg.pcr5(),
-            6 => port_reg.pcr6(),
-            7 => port_reg.pcr7(),
-            8 => port_reg.pcr8(),
-            9 => port_reg.pcr9(),
-            10 => port_reg.pcr10(),
-            11 => port_reg.pcr11(),
-            12 => port_reg.pcr12(),
-            13 => port_reg.pcr13(),
-            14 => port_reg.pcr14(),
-            15 => port_reg.pcr15(),
-            16 => port_reg.pcr16(),
-            17 => port_reg.pcr17(),
-            18 => port_reg.pcr18(),
-            19 => port_reg.pcr19(),
-            20 => port_reg.pcr20(),
-            21 => port_reg.pcr21(),
-            22 => port_reg.pcr22(),
-            23 => port_reg.pcr23(),
-            24 => port_reg.pcr24(),
-            25 => port_reg.pcr25(),
-            26 => port_reg.pcr26(),
-            27 => port_reg.pcr27(),
-            28 => port_reg.pcr28(),
-            29 => port_reg.pcr29(),
-            30 => port_reg.pcr30(),
-            31 => port_reg.pcr31(),
-            _ => panic!("Invalid pin: {}", self.pin),
-        }
+        self.pcr_reg()
     }
 
     fn set_function(&self, function: Mux) {
@@ -318,7 +293,7 @@ macro_rules! impl_pin {
                 impl crate::peripherals::$peri {
                 /// Convenience helper to obtain a type-erased handle to this pin.
                 pub fn degrade(&self) -> AnyPin {
-                    AnyPin::new(self.port(), self.pin(), self.gpio())
+                    AnyPin::new(self.port(), self.pin(), self.gpio(), self.port_reg(), self.pcr_reg())
                 }
             }
         }
