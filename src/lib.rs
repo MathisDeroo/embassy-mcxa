@@ -190,7 +190,7 @@ embassy_hal_internal::peripherals!(
     P2_29,
     P2_30,
     P2_31,
-    
+
     P3_0,
     P3_1,
     P3_2,
