@@ -2,20 +2,9 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use embassy_mcxa::bind_interrupts;
 use embassy_time::Timer;
-use hal::gpio::{Level, Output};
-use hal::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse};
+use hal::gpio::{DriveStrength, Level, Output, SlewRate};
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
-
-// Bind only OS_EVENT for timer interrupts
-bind_interrupts!(struct Irqs {
-    OS_EVENT => hal::ostimer::time_driver::OsEventHandler;
-});
-
-#[used]
-#[no_mangle]
-static KEEP_OS_EVENT: unsafe extern "C" fn() = OS_EVENT;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -23,12 +12,9 @@ async fn main(_spawner: Spawner) {
 
     defmt::info!("Blink example");
 
-    // Initialize embassy-time global driver backed by OSTIMER0
-    hal::ostimer::time_driver::init(hal::config::Config::default().time_interrupt_priority, 1_000_000);
-
-    let mut red = Output::new(p.P3_18, Level::High, Dse::Dse0, Sre::Sre0);
-    let mut green = Output::new(p.P3_19, Level::High, Dse::Dse0, Sre::Sre0);
-    let mut blue = Output::new(p.P3_21, Level::High, Dse::Dse0, Sre::Sre0);
+    let mut red = Output::new(p.P3_18, Level::High, DriveStrength::Normal, SlewRate::Fast);
+    let mut green = Output::new(p.P3_19, Level::High, DriveStrength::Normal, SlewRate::Fast);
+    let mut blue = Output::new(p.P3_21, Level::High, DriveStrength::Normal, SlewRate::Fast);
 
     loop {
         defmt::info!("Toggle LEDs");
