@@ -355,6 +355,16 @@ pub fn init(cfg: crate::config::Config) -> Peripherals {
     crate::interrupt::RTC.set_priority(cfg.rtc_interrupt_priority);
     // Apply user-configured priority early; enabling is left to examples/apps
     crate::interrupt::ADC1.set_priority(cfg.adc_interrupt_priority);
+    // Apply user-configured priority early; enabling is left to examples/apps
+    crate::interrupt::GPIO0.set_priority(cfg.gpio_interrupt_priority);
+    // Apply user-configured priority early; enabling is left to examples/apps
+    crate::interrupt::GPIO1.set_priority(cfg.gpio_interrupt_priority);
+    // Apply user-configured priority early; enabling is left to examples/apps
+    crate::interrupt::GPIO2.set_priority(cfg.gpio_interrupt_priority);
+    // Apply user-configured priority early; enabling is left to examples/apps
+    crate::interrupt::GPIO3.set_priority(cfg.gpio_interrupt_priority);
+    // Apply user-configured priority early; enabling is left to examples/apps
+    crate::interrupt::GPIO4.set_priority(cfg.gpio_interrupt_priority);
 
     // Configure clocks
     crate::clocks::init(cfg.clock_cfg).unwrap();

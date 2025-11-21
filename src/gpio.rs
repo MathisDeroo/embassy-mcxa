@@ -3,12 +3,83 @@
 //! concrete pin type.
 
 use core::convert::Infallible;
+use core::future::Future;
 use core::marker::PhantomData;
+use core::pin::Pin as FuturePin;
+use core::task::{Context, Poll};
+use core::sync::atomic::{AtomicBool, Ordering};
 
+use embassy_sync::waitqueue::AtomicWaker;
 use embassy_hal_internal::{Peri, PeripheralType};
 use paste::paste;
 
+use crate::pac::interrupt;
 use crate::pac::port0::pcr0::{Dse, Inv, Mux, Pe, Ps, Sre};
+
+const PORT_COUNT: usize = 5;
+
+static WAKERS: [AtomicWaker; PORT_COUNT] = [const { AtomicWaker::new() }; PORT_COUNT];
+static INTERRUPT_DETECTED: [AtomicBool; PORT_COUNT] = [const { AtomicBool::new(false) }; PORT_COUNT];
+/// Interrupt trigger levels.
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum InterruptTrigger {
+    LevelLow,
+    RisingEdge,
+    FallingEdge,
+    AnyEdges,
+    LevelHigh,
+}
+
+fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterBlock) {
+    let gpio = unsafe { &*gpio_base };
+    let isfr = gpio.isfr0().read().bits();
+
+    if isfr != 0 {
+        // Clear all pending interrupts
+        gpio.isfr0().write(|w| unsafe { w.bits(isfr) });
+
+        // Wake the corresponding port waker
+        if port_index < WAKERS.len() {
+            WAKERS[port_index].wake();
+        }
+
+        // Disable all pin interrupts that fired to prevent re-triggering
+        for pin in 0..32 {
+            if (isfr & (1 << pin)) != 0 {
+                gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
+            }
+        }
+
+        INTERRUPT_DETECTED[port_index].store(true, Ordering::Relaxed);
+    }
+}
+
+#[interrupt]
+fn GPIO0() {
+    irq_handler(0, crate::pac::Gpio0::ptr());
+}
+
+#[interrupt]
+fn GPIO1() {
+    irq_handler(1, crate::pac::Gpio1::ptr());
+}
+
+#[interrupt]
+fn GPIO2() {
+    irq_handler(2, crate::pac::Gpio2::ptr());
+}
+
+#[interrupt]
+fn GPIO3() {
+    irq_handler(3, crate::pac::Gpio3::ptr());
+}
+
+#[interrupt]
+fn GPIO4() {
+    irq_handler(4, crate::pac::Gpio4::ptr());
+}
+
 
 /// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -596,6 +667,36 @@ impl<'d> Flex<'d> {
     pub fn get_level(&self) -> Level {
         self.is_high().into()
     }
+
+    /// Wait until the pin is high. If it is already high, return immediately.
+    #[inline]
+    pub async fn wait_for_high(&mut self) {
+        InputFuture::new(self.pin.reborrow(), InterruptTrigger::LevelHigh).await;
+    }
+
+    /// Wait until the pin is low. If it is already low, return immediately.
+    #[inline]
+    pub async fn wait_for_low(&mut self) {
+        InputFuture::new(self.pin.reborrow(), InterruptTrigger::LevelLow).await;
+    }
+
+    /// Wait for the pin to undergo a transition from low to high.
+    #[inline]
+    pub async fn wait_for_rising_edge(&mut self) {
+        InputFuture::new(self.pin.reborrow(), InterruptTrigger::RisingEdge).await;
+    }
+
+    /// Wait for the pin to undergo a transition from high to low.
+    #[inline]
+    pub async fn wait_for_falling_edge(&mut self) {
+        InputFuture::new(self.pin.reborrow(), InterruptTrigger::FallingEdge).await;
+    }
+
+    /// Wait for the pin to undergo any transition, i.e low to high OR high to low.
+    #[inline]
+    pub async fn wait_for_any_edge(&mut self) {
+        InputFuture::new(self.pin.reborrow(), InterruptTrigger::AnyEdges).await;
+    }
 }
 
 /// GPIO output driver that owns a `Flex` pin.
@@ -691,11 +792,96 @@ impl<'d> Input<'d> {
         self.flex
     }
 
-    // Get the pin level.
+    /// Get the pin level.
     pub fn get_level(&self) -> Level {
         self.flex.get_level()
     }
+
+    /// Wait until the pin is high. If it is already high, return immediately.
+    #[inline]
+    pub async fn wait_for_high(&mut self) {
+        self.flex.wait_for_high().await;
+    }
+
+    /// Wait until the pin is low. If it is already low, return immediately.
+    #[inline]
+    pub async fn wait_for_low(&mut self) {
+        self.flex.wait_for_low().await;
+    }
+
+    /// Wait for the pin to undergo a transition from low to high.
+    #[inline]
+    pub async fn wait_for_rising_edge(&mut self) {
+        self.flex.wait_for_rising_edge().await;
+    }
+
+    /// Wait for the pin to undergo a transition from high to low.
+    #[inline]
+    pub async fn wait_for_falling_edge(&mut self) {
+        self.flex.wait_for_falling_edge().await;
+    }
+
+    /// Wait for the pin to undergo any transition, i.e low to high OR high to low.
+    #[inline]
+    pub async fn wait_for_any_edge(&mut self) {
+        self.flex.wait_for_any_edge().await;
+    }
 }
+
+
+struct InputFuture<'d> {
+    pin: Peri<'d, AnyPin>,
+}
+
+impl<'d> InputFuture<'d> {
+    fn new(pin: Peri<'d, AnyPin>, level: InterruptTrigger) -> Self {
+        // Initialize the input future with the specified pin and trigger level
+
+        // Clear any existing pending interrupt on this pin
+        pin.gpio().isfr0().write(|w| unsafe { w.bits(1 << pin.pin()) });
+        pin.gpio().icr(pin.pin()).write(|w| w.isf().isf1());
+
+        // Pin interrupt configuration
+        pin.gpio().icr(pin.pin()).modify(|_, w| match level {
+            InterruptTrigger::LevelHigh => w.irqc().irqc12(),
+            InterruptTrigger::LevelLow => w.irqc().irqc8(),
+            InterruptTrigger::RisingEdge => w.irqc().irqc9(),
+            InterruptTrigger::FallingEdge => w.irqc().irqc10(),
+            InterruptTrigger::AnyEdges => w.irqc().irqc11(),
+        });
+
+        Self { pin }
+    }
+}
+
+
+impl<'d> Future for InputFuture<'d> {
+    type Output = ();
+
+    fn poll(self: FuturePin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // We need to register/re-register the waker for each poll because any
+        // calls to wake will deregister the waker.
+        if self.pin.port() >= WAKERS.len() {
+            panic!("Invalid GPIO port index {}", self.pin.port());
+        }
+
+        let waker = &WAKERS[self.pin.port()];
+
+        waker.register(cx.waker());
+
+        // Double check that the pin interrut has been disabled by IRQ handler
+        if self.pin.gpio().icr(self.pin.pin()).read().bits() & (1 << self.pin.pin()) == 0 {
+            if INTERRUPT_DETECTED[self.pin.port()].swap(false, Ordering::Relaxed) {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        }
+        else {
+            Poll::Pending
+        }
+    }
+ }
 
 // Both embedded_hal 0.2 and 1.0 must be supported by embassy HALs.
 impl embedded_hal_02::digital::v2::InputPin for Flex<'_> {
