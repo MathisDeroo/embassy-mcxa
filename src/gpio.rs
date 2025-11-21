@@ -91,7 +91,7 @@ impl From<Inverter> for Inv {
 
 pub type Gpio = crate::peripherals::GPIO0;
 
-/// Type-erased representation of a GP pin.
+/// Type-erased representation of a GPIO pin.
 pub struct AnyPin {
     port: usize,
     pin: usize,
@@ -155,7 +155,7 @@ trait SealedPin {
     fn set_enable_input_buffer(&self);
 }
 
-/// GP pin trait.
+/// GPIO pin trait.
 #[allow(private_bounds)]
 pub trait GpioPin: SealedPin + Sized + PeripheralType + Into<AnyPin> + 'static {
     /// Type-erase the pin.
@@ -520,8 +520,6 @@ impl<'d> Flex<'d> {
     }
 
     /// Put the pin into input mode.
-    ///
-    /// The pull setting is left unchanged.
     pub fn set_as_input(&mut self) {
         let mask = self.mask();
         let gpio = self.gpio();
@@ -532,8 +530,6 @@ impl<'d> Flex<'d> {
     }
 
     /// Put the pin into output mode.
-    ///
-    /// The initial output level is left unchanged.
     pub fn set_as_output(&mut self) {
         let mask = self.mask();
         let gpio = self.gpio();
@@ -594,22 +590,27 @@ impl<'d> Flex<'d> {
         !self.is_set_high()
     }
 
+    /// Configure the pin pull up/down level.
     pub fn set_pull(&mut self, pull_select: Pull) {
         self.pin.set_pull(pull_select);
     }
 
+    /// Configure the pin drive strength.
     pub fn set_drive_strength(&mut self, strength: DriveStrength) {
         self.pin.set_drive_strength(strength.into());
     }
 
+    /// Configure the pin slew rate.
     pub fn set_slew_rate(&mut self, slew_rate: SlewRate) {
         self.pin.set_slew_rate(slew_rate.into());
     }
 
+    /// Enable input buffer for the pin.
     pub fn set_enable_input_buffer(&mut self) {
         self.pin.set_enable_input_buffer();
     }
 
+    /// Get pin level.
     pub fn get_level(&self) -> Level {
         self.is_high().into()
     }
@@ -708,6 +709,7 @@ impl<'d> Input<'d> {
         self.flex
     }
 
+    // Get the pin level.
     pub fn get_level(&self) -> Level {
         self.flex.get_level()
     }
