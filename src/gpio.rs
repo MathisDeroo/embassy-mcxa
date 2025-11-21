@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use embassy_hal_internal::{Peri, PeripheralType};
 use paste::paste;
 
-use crate::pac::port0::pcr0::{Ps, Pe, Mux, Sre, Dse, Inv};
+use crate::pac::port0::pcr0::{Dse, Inv, Mux, Pe, Ps, Sre};
 
 /// Logical level for GPIO pins.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -125,7 +125,6 @@ impl AnyPin {
     }
 }
 
-/// Type-level trait implemented by concrete pin ZSTs.
 embassy_hal_internal::impl_peripheral!(AnyPin);
 
 trait SealedPin {
@@ -227,7 +226,6 @@ impl SealedPin for AnyPin {
         }
     }
 
-
     fn set_function(&self, function: Mux) {
         self.pcr_reg().modify(|_, w| w.mux().variant(function));
     }
@@ -238,7 +236,6 @@ impl SealedPin for AnyPin {
             w.pe().variant(pull_enable);
             w.ps().variant(pull_select)
         });
-
     }
 
     fn set_drive_strength(&self, strength: Dse) {
@@ -246,7 +243,7 @@ impl SealedPin for AnyPin {
     }
 
     fn set_slew_rate(&self, slew_rate: Sre) {
-       self.pcr_reg().modify(|_, w| w.sre().variant(slew_rate));
+        self.pcr_reg().modify(|_, w| w.sre().variant(slew_rate));
     }
 
     fn set_enable_input_buffer(&self) {
@@ -360,7 +357,7 @@ impl_pin!(P0_28, 0, 28, Gpio0);
 impl_pin!(P0_29, 0, 29, Gpio0);
 impl_pin!(P0_30, 0, 30, Gpio0);
 impl_pin!(P0_31, 0, 31, Gpio0);
-    
+
 impl_pin!(P1_0, 1, 0, Gpio1);
 impl_pin!(P1_1, 1, 1, Gpio1);
 impl_pin!(P1_2, 1, 2, Gpio1);
@@ -426,7 +423,6 @@ impl_pin!(P2_28, 2, 28, Gpio2);
 impl_pin!(P2_29, 2, 29, Gpio2);
 impl_pin!(P2_30, 2, 30, Gpio2);
 impl_pin!(P2_31, 2, 31, Gpio2);
-
 
 impl_pin!(P3_0, 3, 0, Gpio3);
 impl_pin!(P3_1, 3, 1, Gpio3);
@@ -531,7 +527,7 @@ impl<'d> Flex<'d> {
         let gpio = self.gpio();
 
         self.set_enable_input_buffer();
-        
+
         gpio.pddr().modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
     }
 
@@ -626,11 +622,7 @@ pub struct Output<'d> {
 
 impl<'d> Output<'d> {
     /// Create a GPIO output driver for a [GpioPin] with the provided [Level].
-    pub fn new(pin: Peri<'d, impl GpioPin>, 
-        initial: Level,
-        strength: DriveStrength,
-        slew_rate: SlewRate,
-        ) -> Self {
+    pub fn new(pin: Peri<'d, impl GpioPin>, initial: Level, strength: DriveStrength, slew_rate: SlewRate) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_level(initial);
         flex.set_as_output();
@@ -689,11 +681,7 @@ pub struct Input<'d> {
 
 impl<'d> Input<'d> {
     /// Create a GPIO input driver for a [GpioPin].
-    pub fn new(pin: Peri<'d, impl GpioPin>, 
-        pull_select: Pull,
-        strength: DriveStrength,
-        slew_rate: SlewRate,
-        ) -> Self {
+    pub fn new(pin: Peri<'d, impl GpioPin>, pull_select: Pull, strength: DriveStrength, slew_rate: SlewRate) -> Self {
         let mut flex = Flex::new(pin);
         flex.set_as_input();
         flex.set_drive_strength(strength);
