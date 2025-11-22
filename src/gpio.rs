@@ -6,7 +6,7 @@ use core::convert::Infallible;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin as FuturePin;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 use core::task::{Context, Poll};
 
 use embassy_sync::waitqueue::AtomicWaker;
@@ -35,7 +35,7 @@ impl Iterator for BitIter {
 const PORT_COUNT: usize = 5;
 
 static WAKERS: [AtomicWaker; PORT_COUNT] = [const { AtomicWaker::new() }; PORT_COUNT];
-static INTERRUPT_DETECTED: [AtomicBool; PORT_COUNT] = [const { AtomicBool::new(false) }; PORT_COUNT];
+static INTERRUPT_DETECTED: [AtomicU32; PORT_COUNT] = [const { AtomicU32::new(0) }; PORT_COUNT];
 /// Interrupt trigger levels.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -76,7 +76,7 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
             gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
         }
 
-        INTERRUPT_DETECTED[port_index].store(true, Ordering::Relaxed);
+        INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
     }
 }
 
@@ -898,7 +898,7 @@ impl<'d> Future for InputFuture<'d> {
 
         // Double check that the pin interrupt has been disabled by IRQ handler
         if self.pin.gpio().icr(self.pin.pin()).read().bits() & (1 << self.pin.pin()) == 0 {
-            if INTERRUPT_DETECTED[self.pin.port()].swap(false, Ordering::Relaxed) {
+            if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(1u32 << self.pin.pin()), Ordering::Relaxed) & (1u32 << self.pin.pin())) != 0 {
                 Poll::Ready(())
             } else {
                 Poll::Pending
