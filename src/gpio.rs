@@ -11,7 +11,7 @@ use core::task::{Context, Poll};
 
 use embassy_hal_internal::interrupt::InterruptExt;
 use embassy_hal_internal::{Peri, PeripheralType};
-use embassy_sync::waitqueue::AtomicWaker;
+use maitake_sync::WaitMap;
 use paste::paste;
 
 use crate::pac::interrupt;
@@ -35,7 +35,13 @@ impl Iterator for BitIter {
 
 const PORT_COUNT: usize = 5;
 
-static WAKERS: [AtomicWaker; PORT_COUNT] = [const { AtomicWaker::new() }; PORT_COUNT];
+static PORT_WAIT_MAPS: [WaitMap<usize, ()>; PORT_COUNT] = [
+    WaitMap::new(),
+    WaitMap::new(), 
+    WaitMap::new(),
+    WaitMap::new(),
+    WaitMap::new(),
+];
 static INTERRUPT_DETECTED: [AtomicU32; PORT_COUNT] = [const { AtomicU32::new(0) }; PORT_COUNT];
 /// Interrupt trigger levels.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -70,8 +76,9 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
 
         INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
         // Wake the corresponding port waker
-        if let Some(w) = WAKERS.get(port_index) {
-            w.wake();
+        if let Some(w) = PORT_WAIT_MAPS.get(port_index) {
+            defmt::info!("Waking pin {}, port {}", pin, port_index);
+            w.wake(&pin, ());
         }
     }
 }
@@ -884,24 +891,33 @@ impl<'d> Future for InputFuture<'d> {
     fn poll(self: FuturePin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // We need to register/re-register the waker for each poll because any
         // calls to wake will deregister the waker.
-        if self.pin.port() >= WAKERS.len() {
+        if self.pin.port() >= PORT_WAIT_MAPS.len() {
             panic!("Invalid GPIO port index {}", self.pin.port());
         }
 
-        let waker = &WAKERS[self.pin.port()];
-
-        waker.register(cx.waker());
+       let mut wait_future = PORT_WAIT_MAPS[self.pin.port()].wait(self.pin.pin());
+        let pinned_future = unsafe { FuturePin::new_unchecked(&mut wait_future) };
+        defmt::info!("After the wait, pin = {}, port = {}", self.pin.pin(), self.pin.port() );
 
         let mask = 1 << self.pin.pin();
-        // Double check that the pin interrupt has been disabled by IRQ handler
-        if self.pin.gpio().icr(self.pin.pin()).read().bits() & (1 << self.pin.pin()) == 0 {
-            if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(mask), Ordering::Relaxed) & (mask)) != 0 {
-                Poll::Ready(())
-            } else {
+        match pinned_future.poll(cx) {
+            Poll::Ready(Ok(())) => {
+                if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(mask), Ordering::Relaxed) & (mask)) != 0 {
+                    defmt::info!("In ready");
+                    Poll::Ready(())
+                } else {
+                    defmt::info!("In OK//pending");
+                    Poll::Pending
+                }
+            }
+            Poll::Ready(Err(_)) => {
+                defmt::info!("WaitMap error for pin {}", self.pin.pin());
                 Poll::Pending
             }
-        } else {
-            Poll::Pending
+            Poll::Pending => {
+                defmt::info!("In pending");
+                Poll::Pending
+            }
         }
     }
 }
