@@ -62,21 +62,17 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
     let gpio = unsafe { &*gpio_base };
     let isfr = gpio.isfr0().read().bits();
 
-    if isfr != 0 {
+    for pin in BitIter(isfr) {
         // Clear all pending interrupts
-        gpio.isfr0().write(|w| unsafe { w.bits(isfr) });
+        gpio.isfr0().write(|w| unsafe { w.bits(1 << pin) });
+        gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
+
+        INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
 
         // Wake the corresponding port waker
         if port_index < WAKERS.len() {
             WAKERS[port_index].wake();
         }
-
-        // Disable all pin interrupts that fired to prevent re-triggering
-        for pin in BitIter(isfr) {
-            gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
-        }
-
-        INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
     }
 }
 
