@@ -68,10 +68,9 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
         gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
 
         INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
-
         // Wake the corresponding port waker
-        if port_index < WAKERS.len() {
-            WAKERS[port_index].wake();
+        if let Some(w) = WAKERS.get(port_index) {
+            w.wake();
         }
     }
 }
@@ -892,9 +891,10 @@ impl<'d> Future for InputFuture<'d> {
 
         waker.register(cx.waker());
 
+        let mask = 1 << self.pin.pin();
         // Double check that the pin interrupt has been disabled by IRQ handler
         if self.pin.gpio().icr(self.pin.pin()).read().bits() & (1 << self.pin.pin()) == 0 {
-            if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(1u32 << self.pin.pin()), Ordering::Relaxed) & (1u32 << self.pin.pin())) != 0 {
+            if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(mask), Ordering::Relaxed) & (mask)) != 0 {
                 Poll::Ready(())
             } else {
                 Poll::Pending
