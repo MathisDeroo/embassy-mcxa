@@ -9,8 +9,9 @@ use core::pin::Pin as FuturePin;
 use core::sync::atomic::{AtomicU32, Ordering};
 use core::task::{Context, Poll};
 
+use embassy_hal_internal::interrupt::InterruptExt;
+use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
-use embassy_hal_internal::{Peri, PeripheralType, interrupt::InterruptExt};
 use paste::paste;
 
 use crate::pac::interrupt;

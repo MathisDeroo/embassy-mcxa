@@ -361,7 +361,9 @@ pub fn init(cfg: crate::config::Config) -> Peripherals {
     // Configure clocks
     crate::clocks::init(cfg.clock_cfg).unwrap();
 
-    unsafe { crate::gpio::init(); }
+    unsafe {
+        crate::gpio::init();
+    }
 
     // Initialize embassy-time global driver backed by OSTIMER0
     #[cfg(feature = "time")]

@@ -7,7 +7,10 @@
 #![allow(clippy::missing_safety_doc)]
 
 mod generated {
-    embassy_hal_internal::interrupt_mod!(OS_EVENT, RTC, ADC1, GPIO0, GPIO1, GPIO2, GPIO3, GPIO4, LPI2C0, LPI2C1, LPI2C2, LPI2C3, LPUART0, LPUART1, LPUART2, LPUART3, LPUART4, LPUART5,);
+    embassy_hal_internal::interrupt_mod!(
+        OS_EVENT, RTC, ADC1, GPIO0, GPIO1, GPIO2, GPIO3, GPIO4, LPI2C0, LPI2C1, LPI2C2, LPI2C3, LPUART0, LPUART1,
+        LPUART2, LPUART3, LPUART4, LPUART5,
+    );
 }
 
 use core::sync::atomic::{AtomicU16, AtomicU32, Ordering};
@@ -445,7 +448,7 @@ impl InterruptExt for Gpio3 {
 pub struct Gpio4;
 pub const GPIO4: Gpio4 = Gpio4;
 
-impl InterruptExt for Gpio4  {
+impl InterruptExt for Gpio4 {
     /// Clear any pending GPIO4 in NVIC.
     #[inline]
     fn unpend(&self) {
