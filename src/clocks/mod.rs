@@ -91,8 +91,11 @@ pub fn init(settings: ClocksConfig) -> Result<(), ClockError> {
     // For now, just use FIRC as the main/cpu clock, which should already be
     // the case on reset
     assert!(operator.scg0.rccr().read().scs().is_firc());
+    let input = operator.clocks.fro_hf_root.clone().unwrap();
+    operator.clocks.main_clk = Some(input.clone());
+    // We can also assume cpu/system clk == fro_hf because div is /1.
     assert_eq!(operator.syscon.ahbclkdiv().read().div().bits(), 0);
-    operator.clocks.main_clk = Some(operator.clocks.fro_hf_root.clone().unwrap());
+    operator.clocks.cpu_system_clk = Some(input);
 
     critical_section::with(|cs| {
         let mut clks = CLOCKS.borrow_ref_mut(cs);
@@ -188,6 +191,9 @@ pub struct Clocks {
     /// `main_clk` is the main clock used by the CPU, AHB, APB, IPS bus, and some
     /// peripherals.
     pub main_clk: Option<Clock>,
+
+    /// `CPU_CLK` or `SYSTEM_CLK` is the output of `main_clk`, run through the `AHBCLKDIV`
+    pub cpu_system_clk: Option<Clock>,
 
     /// `pll1_clk` is the output of the main system PLL, `pll1`.
     pub pll1_clk: Option<Clock>,
@@ -522,9 +528,42 @@ impl Clocks {
         Ok(clk.frequency)
     }
 
+    /// Ensure the `pll1_clk` clock is active and valid at the given power state.
+    pub fn ensure_pll1_clk_active(&self, _at_level: &PoweredClock) -> Result<u32, ClockError> {
+        Err(ClockError::NotImplemented { clock: "pll1_clk" })
+    }
+
     /// Ensure the `pll1_clk_div` clock is active and valid at the given power state.
     pub fn ensure_pll1_clk_div_active(&self, _at_level: &PoweredClock) -> Result<u32, ClockError> {
         Err(ClockError::NotImplemented { clock: "pll1_clk_div" })
+    }
+
+    /// Ensure the `CPU_CLK` or `SYSTEM_CLK` is active
+    pub fn ensure_cpu_system_clk_active(&self, at_level: &PoweredClock) -> Result<u32, ClockError> {
+        let Some(clk) = self.cpu_system_clk.as_ref() else {
+            return Err(ClockError::BadConfig {
+                clock: "cpu_system_clk",
+                reason: "required but not active",
+            });
+        };
+        // Can the main_clk ever be active in deep sleep? I think it is gated?
+        match at_level {
+            PoweredClock::NormalEnabledDeepSleepDisabled => {}
+            PoweredClock::AlwaysEnabled => {
+                return Err(ClockError::BadConfig {
+                    clock: "main_clk",
+                    reason: "not low power active",
+                })
+            }
+        }
+
+        Ok(clk.frequency)
+    }
+
+    pub fn ensure_slow_clk_active(&self, at_level: &PoweredClock) -> Result<u32, ClockError> {
+        let freq = self.ensure_cpu_system_clk_active(at_level)?;
+
+        Ok(freq / 6)
     }
 }
 
@@ -652,17 +691,15 @@ impl ClockOperator<'_> {
                 });
             }
 
-            // Halt and reset the div
+            // Halt and reset the div; then set our desired div.
             self.syscon.frohfdiv().write(|w| {
                 w.halt().halt();
                 w.reset().asserted();
+                unsafe { w.div().bits(d.into_bits()) };
                 w
             });
-            // Then change the div, unhalt it, and reset it
+            // Then unhalt it, and reset it
             self.syscon.frohfdiv().write(|w| {
-                unsafe {
-                    w.div().bits(d.into_bits());
-                }
                 w.halt().run();
                 w.reset().released();
                 w
@@ -743,17 +780,15 @@ impl ClockOperator<'_> {
                 });
             }
 
-            // Halt and reset the div
+            // Halt and reset the div; then set our desired div.
             self.syscon.frolfdiv().write(|w| {
                 w.halt().halt();
                 w.reset().asserted();
+                unsafe { w.div().bits(d.into_bits()) };
                 w
             });
-            // Then change the div, unhalt it, and reset it
-            self.syscon.frolfdiv().write(|w| {
-                unsafe {
-                    w.div().bits(d.into_bits());
-                }
+            // Then unhalt it, and reset it
+            self.syscon.frolfdiv().modify(|_r, w| {
                 w.halt().run();
                 w.reset().released();
                 w
@@ -893,6 +928,11 @@ pub(crate) mod gate {
     #[cfg(not(feature = "time"))]
     impl_cc_gate!(OSTIMER0, mrcc_glb_cc1, mrcc_glb_rst1, ostimer0, OsTimerConfig);
 
+    impl_cc_gate!(LPUART0, mrcc_glb_cc0, mrcc_glb_rst0, lpuart0, LpuartConfig);
+    impl_cc_gate!(LPUART1, mrcc_glb_cc0, mrcc_glb_rst0, lpuart1, LpuartConfig);
     impl_cc_gate!(LPUART2, mrcc_glb_cc0, mrcc_glb_rst0, lpuart2, LpuartConfig);
+    impl_cc_gate!(LPUART3, mrcc_glb_cc0, mrcc_glb_rst0, lpuart3, LpuartConfig);
+    impl_cc_gate!(LPUART4, mrcc_glb_cc0, mrcc_glb_rst0, lpuart4, LpuartConfig);
+    impl_cc_gate!(LPUART5, mrcc_glb_cc1, mrcc_glb_rst1, lpuart5, LpuartConfig);
     impl_cc_gate!(ADC1, mrcc_glb_cc1, mrcc_glb_rst1, adc1, AdcConfig);
 }
