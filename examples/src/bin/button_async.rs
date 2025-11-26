@@ -12,6 +12,7 @@ async fn main(_spawner: Spawner) {
 
     defmt::info!("GPIO interrupt example");
 
+    // This button is labeled "WAKEUP" on the FRDM-MCXA276
     let mut pin = Input::new(p.P1_7, Pull::Up, DriveStrength::Normal, SlewRate::Fast);
 
     let mut press_count = 0u32;
