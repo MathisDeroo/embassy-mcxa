@@ -696,14 +696,20 @@ impl<'d> Flex<'d> {
         self.is_high().into()
     }
 
-    pub async fn wait_for_inner(&mut self, level: InterruptTrigger) {
+    /// Helper function that waits for a given interrupt trigger
+    async fn wait_for_inner(&mut self, level: InterruptTrigger) {
         let port = self.pin.port;
         let pindx = self.pin.pin;
         let pin = self.pin.reborrow();
+
+        // First, ensure that we have a waker that is ready for this port+pin
         let w = PORT_WAIT_MAPS[port].wait(pindx);
         let mut w = pin!(w);
+        // TODO: Handle Result here properly
         w.as_mut().subscribe().await.unwrap();
 
+        // Now that our waker is in the map, we can enable the appropriate interrupt
+        //
         // Clear any existing pending interrupt on this pin
         pin.gpio().isfr0().write(|w| unsafe { w.bits(1 << pin.pin()) });
         pin.gpio().icr(pin.pin()).write(|w| w.isf().isf1());
@@ -717,6 +723,7 @@ impl<'d> Flex<'d> {
             InterruptTrigger::AnyEdges => w.irqc().irqc11(),
         });
 
+        // Finally, we can await the matching call to `.wake()` from the interrupt
         _ = w.await;
     }
 
