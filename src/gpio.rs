@@ -58,7 +58,6 @@ mod asynch {
 
             // Wake the corresponding port waker
             if let Some(w) = PORT_WAIT_MAPS.get(port_index) {
-                defmt::debug!("Waking pin {}, port {}", pin, port_index);
                 w.wake(&pin, ());
             }
         }
