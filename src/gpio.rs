@@ -40,16 +40,6 @@ static PORT_WAIT_MAPS: [WaitMap<usize, ()>; PORT_COUNT] = [
     WaitMap::new(),
     WaitMap::new(),
 ];
-/// Interrupt trigger levels.
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum InterruptTrigger {
-    LevelLow,
-    RisingEdge,
-    FallingEdge,
-    AnyEdges,
-    LevelHigh,
-}
 
 pub(crate) unsafe fn init() {
     interrupt::GPIO0.enable();
@@ -697,64 +687,71 @@ impl<'d> Flex<'d> {
     }
 
     /// Helper function that waits for a given interrupt trigger
-    async fn wait_for_inner(&mut self, level: InterruptTrigger) {
-        let port = self.pin.port;
-        let pindx = self.pin.pin;
-        let pin = self.pin.reborrow();
-
+    async fn wait_for_inner(&mut self, level: crate::pac::gpio0::icr::Irqc) {
         // First, ensure that we have a waker that is ready for this port+pin
-        let w = PORT_WAIT_MAPS[port].wait(pindx);
+        let w = PORT_WAIT_MAPS[self.pin.port].wait(self.pin.pin);
         let mut w = pin!(w);
-        // TODO: Handle Result here properly
-        w.as_mut().subscribe().await.unwrap();
+        // Wait for the subscription to occur, which requires polling at least once
+        //
+        // This function returns a result, but can only be an Err if:
+        //
+        // * We call `.close()` on a WaitMap, which we never do
+        // * We have a duplicate key, which can't happen because `wait_for_*` methods
+        //   take an &mut ref of their unique port+pin combo
+        //
+        // So we wait for it to complete, but ignore the result.
+        _ = w.as_mut().subscribe().await;
 
         // Now that our waker is in the map, we can enable the appropriate interrupt
         //
         // Clear any existing pending interrupt on this pin
-        pin.gpio().isfr0().write(|w| unsafe { w.bits(1 << pin.pin()) });
-        pin.gpio().icr(pin.pin()).write(|w| w.isf().isf1());
+        self.pin
+            .gpio()
+            .isfr0()
+            .write(|w| unsafe { w.bits(1 << self.pin.pin()) });
+        self.pin.gpio().icr(self.pin.pin()).write(|w| w.isf().isf1());
 
         // Pin interrupt configuration
-        pin.gpio().icr(pin.pin()).modify(|_, w| match level {
-            InterruptTrigger::LevelHigh => w.irqc().irqc12(),
-            InterruptTrigger::LevelLow => w.irqc().irqc8(),
-            InterruptTrigger::RisingEdge => w.irqc().irqc9(),
-            InterruptTrigger::FallingEdge => w.irqc().irqc10(),
-            InterruptTrigger::AnyEdges => w.irqc().irqc11(),
-        });
+        self.pin
+            .gpio()
+            .icr(self.pin.pin())
+            .modify(|_, w| w.irqc().variant(level));
 
-        // Finally, we can await the matching call to `.wake()` from the interrupt
+        // Finally, we can await the matching call to `.wake()` from the interrupt.
+        //
+        // Again, technically, this could return a result, but for the same reasons
+        // as above, this can't be an error in our case, so just wait for it to complete
         _ = w.await;
     }
 
     /// Wait until the pin is high. If it is already high, return immediately.
     #[inline]
     pub fn wait_for_high(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
-        self.wait_for_inner(InterruptTrigger::LevelHigh)
+        self.wait_for_inner(crate::pac::gpio0::icr::Irqc::Irqc12)
     }
 
     /// Wait until the pin is low. If it is already low, return immediately.
     #[inline]
     pub fn wait_for_low(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
-        self.wait_for_inner(InterruptTrigger::LevelLow)
+        self.wait_for_inner(crate::pac::gpio0::icr::Irqc::Irqc8)
     }
 
     /// Wait for the pin to undergo a transition from low to high.
     #[inline]
     pub fn wait_for_rising_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
-        self.wait_for_inner(InterruptTrigger::RisingEdge)
+        self.wait_for_inner(crate::pac::gpio0::icr::Irqc::Irqc9)
     }
 
     /// Wait for the pin to undergo a transition from high to low.
     #[inline]
     pub fn wait_for_falling_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
-        self.wait_for_inner(InterruptTrigger::FallingEdge)
+        self.wait_for_inner(crate::pac::gpio0::icr::Irqc::Irqc10)
     }
 
     /// Wait for the pin to undergo any transition, i.e low to high OR high to low.
     #[inline]
     pub fn wait_for_any_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
-        self.wait_for_inner(InterruptTrigger::AnyEdges)
+        self.wait_for_inner(crate::pac::gpio0::icr::Irqc::Irqc11)
     }
 }
 
