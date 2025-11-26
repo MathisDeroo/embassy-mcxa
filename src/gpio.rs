@@ -5,9 +5,7 @@
 use core::convert::Infallible;
 use core::future::Future;
 use core::marker::PhantomData;
-use core::pin::Pin as FuturePin;
-use core::sync::atomic::{AtomicU32, Ordering};
-use core::task::{Context, Poll};
+use core::pin::pin;
 
 use embassy_hal_internal::interrupt::InterruptExt;
 use embassy_hal_internal::{Peri, PeripheralType};
@@ -37,12 +35,11 @@ const PORT_COUNT: usize = 5;
 
 static PORT_WAIT_MAPS: [WaitMap<usize, ()>; PORT_COUNT] = [
     WaitMap::new(),
-    WaitMap::new(), 
+    WaitMap::new(),
     WaitMap::new(),
     WaitMap::new(),
     WaitMap::new(),
 ];
-static INTERRUPT_DETECTED: [AtomicU32; PORT_COUNT] = [const { AtomicU32::new(0) }; PORT_COUNT];
 /// Interrupt trigger levels.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -74,7 +71,6 @@ fn irq_handler(port_index: usize, gpio_base: *const crate::pac::gpio0::RegisterB
         gpio.isfr0().write(|w| unsafe { w.bits(1 << pin) });
         gpio.icr(pin).modify(|_, w| w.irqc().irqc0()); // Disable interrupt
 
-        INTERRUPT_DETECTED[port_index].fetch_or(isfr, Ordering::Relaxed);
         // Wake the corresponding port waker
         if let Some(w) = PORT_WAIT_MAPS.get(port_index) {
             defmt::info!("Waking pin {}, port {}", pin, port_index);
@@ -700,34 +696,58 @@ impl<'d> Flex<'d> {
         self.is_high().into()
     }
 
+    pub async fn wait_for_inner(&mut self, level: InterruptTrigger) {
+        let port = self.pin.port;
+        let pindx = self.pin.pin;
+        let pin = self.pin.reborrow();
+        let w = PORT_WAIT_MAPS[port].wait(pindx);
+        let mut w = pin!(w);
+        w.as_mut().subscribe().await.unwrap();
+
+        // Clear any existing pending interrupt on this pin
+        pin.gpio().isfr0().write(|w| unsafe { w.bits(1 << pin.pin()) });
+        pin.gpio().icr(pin.pin()).write(|w| w.isf().isf1());
+
+        // Pin interrupt configuration
+        pin.gpio().icr(pin.pin()).modify(|_, w| match level {
+            InterruptTrigger::LevelHigh => w.irqc().irqc12(),
+            InterruptTrigger::LevelLow => w.irqc().irqc8(),
+            InterruptTrigger::RisingEdge => w.irqc().irqc9(),
+            InterruptTrigger::FallingEdge => w.irqc().irqc10(),
+            InterruptTrigger::AnyEdges => w.irqc().irqc11(),
+        });
+
+        _ = w.await;
+    }
+
     /// Wait until the pin is high. If it is already high, return immediately.
     #[inline]
-    pub async fn wait_for_high(&mut self) {
-        InputFuture::new(self.pin.reborrow(), InterruptTrigger::LevelHigh).await;
+    pub fn wait_for_high(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
+        self.wait_for_inner(InterruptTrigger::LevelHigh)
     }
 
     /// Wait until the pin is low. If it is already low, return immediately.
     #[inline]
-    pub async fn wait_for_low(&mut self) {
-        InputFuture::new(self.pin.reborrow(), InterruptTrigger::LevelLow).await;
+    pub fn wait_for_low(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
+        self.wait_for_inner(InterruptTrigger::LevelLow)
     }
 
     /// Wait for the pin to undergo a transition from low to high.
     #[inline]
-    pub async fn wait_for_rising_edge(&mut self) {
-        InputFuture::new(self.pin.reborrow(), InterruptTrigger::RisingEdge).await;
+    pub fn wait_for_rising_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
+        self.wait_for_inner(InterruptTrigger::RisingEdge)
     }
 
     /// Wait for the pin to undergo a transition from high to low.
     #[inline]
-    pub async fn wait_for_falling_edge(&mut self) {
-        InputFuture::new(self.pin.reborrow(), InterruptTrigger::FallingEdge).await;
+    pub fn wait_for_falling_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
+        self.wait_for_inner(InterruptTrigger::FallingEdge)
     }
 
     /// Wait for the pin to undergo any transition, i.e low to high OR high to low.
     #[inline]
-    pub async fn wait_for_any_edge(&mut self) {
-        InputFuture::new(self.pin.reborrow(), InterruptTrigger::AnyEdges).await;
+    pub fn wait_for_any_edge(&mut self) -> impl Future<Output = ()> + use<'_, 'd> {
+        self.wait_for_inner(InterruptTrigger::AnyEdges)
     }
 }
 
@@ -857,68 +877,6 @@ impl<'d> Input<'d> {
     #[inline]
     pub async fn wait_for_any_edge(&mut self) {
         self.flex.wait_for_any_edge().await;
-    }
-}
-
-struct InputFuture<'d> {
-    pin: Peri<'d, AnyPin>,
-}
-
-impl<'d> InputFuture<'d> {
-    fn new(pin: Peri<'d, AnyPin>, level: InterruptTrigger) -> Self {
-        // Initialize the input future with the specified pin and trigger level
-
-        // Clear any existing pending interrupt on this pin
-        pin.gpio().isfr0().write(|w| unsafe { w.bits(1 << pin.pin()) });
-        pin.gpio().icr(pin.pin()).write(|w| w.isf().isf1());
-
-        // Pin interrupt configuration
-        pin.gpio().icr(pin.pin()).modify(|_, w| match level {
-            InterruptTrigger::LevelHigh => w.irqc().irqc12(),
-            InterruptTrigger::LevelLow => w.irqc().irqc8(),
-            InterruptTrigger::RisingEdge => w.irqc().irqc9(),
-            InterruptTrigger::FallingEdge => w.irqc().irqc10(),
-            InterruptTrigger::AnyEdges => w.irqc().irqc11(),
-        });
-
-        Self { pin }
-    }
-}
-
-impl<'d> Future for InputFuture<'d> {
-    type Output = ();
-
-    fn poll(self: FuturePin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // We need to register/re-register the waker for each poll because any
-        // calls to wake will deregister the waker.
-        if self.pin.port() >= PORT_WAIT_MAPS.len() {
-            panic!("Invalid GPIO port index {}", self.pin.port());
-        }
-
-       let mut wait_future = PORT_WAIT_MAPS[self.pin.port()].wait(self.pin.pin());
-        let pinned_future = unsafe { FuturePin::new_unchecked(&mut wait_future) };
-        defmt::info!("After the wait, pin = {}, port = {}", self.pin.pin(), self.pin.port() );
-
-        let mask = 1 << self.pin.pin();
-        match pinned_future.poll(cx) {
-            Poll::Ready(Ok(())) => {
-                if (INTERRUPT_DETECTED[self.pin.port()].fetch_and(!(mask), Ordering::Relaxed) & (mask)) != 0 {
-                    defmt::info!("In ready");
-                    Poll::Ready(())
-                } else {
-                    defmt::info!("In OK//pending");
-                    Poll::Pending
-                }
-            }
-            Poll::Ready(Err(_)) => {
-                defmt::info!("WaitMap error for pin {}", self.pin.pin());
-                Poll::Pending
-            }
-            Poll::Pending => {
-                defmt::info!("In pending");
-                Poll::Pending
-            }
-        }
     }
 }
 
