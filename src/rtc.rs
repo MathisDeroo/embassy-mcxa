@@ -1,12 +1,8 @@
 //! RTC DateTime driver.
-use core::sync::atomic::{AtomicBool, Ordering, compiler_fence};
-use core::future::poll_fn;
-use core::task::{Poll};
-
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_hal_internal::interrupt::InterruptExt;
 
-use embassy_sync::waitqueue::AtomicWaker;
+use maitake_sync::WaitCell;
 
 use crate::clocks::with_clocks;
 use crate::pac;
@@ -14,8 +10,7 @@ use crate::pac::rtc0::cr::Um;
 
 type Regs = pac::rtc0::RegisterBlock;
 
-static WAKER: AtomicWaker = AtomicWaker::new();
-static ALARM_OCCURRED: AtomicBool = AtomicBool::new(false);
+static WAKER: WaitCell = WaitCell::new();
 
 // Token-based instance pattern like embassy-imxrt
 pub trait Instance: PeripheralType {
@@ -192,7 +187,6 @@ impl<'a, I: Instance> Rtc<'a, I> {
 
         unsafe {
             crate::pac::interrupt::RTC.enable();
-            cortex_m::interrupt::enable();
         }
 
         Self {
@@ -228,6 +222,8 @@ impl<'a, I: Instance> Rtc<'a, I> {
         while rtc.tar().read().bits() != seconds && timeout > 0 {
             timeout -= 1;
         }
+
+        self.set_interrupt(RtcInterruptEnable::RTC_ALARM_INTERRUPT_ENABLE);
     }
 
     pub fn get_alarm(&self) -> RtcDateTime {
@@ -261,8 +257,6 @@ impl<'a, I: Instance> Rtc<'a, I> {
         if (RtcInterruptEnable::RTC_SECONDS_INTERRUPT_ENABLE & mask) != 0 {
             rtc.ier().modify(|_, w| w.tsie().tsie_1());
         }
-
-        ALARM_OCCURRED.store(false, Ordering::SeqCst);
     }
 
     pub fn disable_interrupt(&self, mask: u32) {
@@ -288,39 +282,22 @@ impl<'a, I: Instance> Rtc<'a, I> {
     }
 
     pub async fn wait_for_alarm(&mut self) {
-        poll_fn(|cx| {
-            WAKER.register(cx.waker());
+        let wait = WAKER.subscribe().await;
+        wait.await;
 
-            // Atomically check and clear the alarm occurred flag to prevent race conditions
-            if critical_section::with(|_| {
-                let occurred = ALARM_OCCURRED.load(Ordering::SeqCst);
-                if occurred {
-                    ALARM_OCCURRED.store(false, Ordering::SeqCst);
-                }
-                occurred
-            }) {
-                // Clear the interrupt and disable the alarm
-                self.disable_interrupt(RtcInterruptEnable::RTC_ALARM_INTERRUPT_ENABLE);
-
-                compiler_fence(Ordering::SeqCst);
-                return Poll::Ready(());
-            } else {
-                return Poll::Pending;
-            }
-        })
-        .await;
-     }
+        // Clear the interrupt and disable the alarm after waking up
+        self.disable_interrupt(RtcInterruptEnable::RTC_ALARM_INTERRUPT_ENABLE);
+    }
 }
 
 pub struct RtcHandler;
 impl crate::interrupt::typelevel::Handler<crate::interrupt::typelevel::RTC> for RtcHandler {
     unsafe fn on_interrupt() {
-        let rtc = unsafe { &*pac::Rtc0::ptr() };
+        let rtc = &*pac::Rtc0::ptr();
         // Check if this is actually a time alarm interrupt
         let sr = rtc.sr().read();
         if sr.taf().bit_is_set() {
             rtc.ier().modify(|_, w| w.taie().clear_bit());
-            ALARM_OCCURRED.store(true, Ordering::SeqCst);
             WAKER.wake();
         }
     }

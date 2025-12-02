@@ -2,7 +2,7 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use hal::rtc::{RtcDateTime, RtcInterruptEnable, Rtc};
+use hal::rtc::{RtcDateTime, Rtc};
 use embassy_mcxa::bind_interrupts;
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
 
@@ -40,8 +40,6 @@ async fn main(_spawner: Spawner) {
 
     rtc.set_alarm(alarm);
     defmt::info!("Alarm set for: 2025-10-15 14:30:10 (+10 seconds)");
-
-    rtc.set_interrupt(RtcInterruptEnable::RTC_ALARM_INTERRUPT_ENABLE);
 
     rtc.start();
 
