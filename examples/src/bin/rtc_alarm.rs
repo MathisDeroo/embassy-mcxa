@@ -2,22 +2,14 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use embassy_mcxa as hal;
-use hal::rtc::{RtcDateTime, RtcInterruptEnable};
-use hal::InterruptExt;
-
-type MyRtc = hal::rtc::Rtc<'static, hal::rtc::Rtc0>;
-
+use hal::rtc::{RtcDateTime, RtcInterruptEnable, Rtc};
 use embassy_mcxa::bind_interrupts;
-use {defmt_rtt as _, panic_probe as _};
+use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
+
 
 bind_interrupts!(struct Irqs {
     RTC => hal::rtc::RtcHandler;
 });
-
-#[used]
-#[no_mangle]
-static KEEP_RTC: unsafe extern "C" fn() = RTC;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -27,7 +19,7 @@ async fn main(_spawner: Spawner) {
 
     let rtc_config = hal::rtc::get_default_config();
 
-    let rtc = MyRtc::new(p.RTC0, rtc_config);
+    let mut rtc = Rtc::new(p.RTC0, rtc_config);
 
     let now = RtcDateTime {
         year: 2025,
@@ -51,23 +43,14 @@ async fn main(_spawner: Spawner) {
 
     rtc.set_interrupt(RtcInterruptEnable::RTC_ALARM_INTERRUPT_ENABLE);
 
-    unsafe {
-        hal::interrupt::RTC.enable();
-    }
-
-    unsafe {
-        cortex_m::interrupt::enable();
-    }
-
     rtc.start();
 
     defmt::info!("RTC started, waiting for alarm...");
 
     loop {
-        if rtc.is_alarm_triggered() {
-            defmt::info!("*** ALARM TRIGGERED! ***");
-            break;
-        }
+        rtc.wait_for_alarm().await;
+        defmt::info!("*** ALARM TRIGGERED! ***");
+        break;
     }
 
     defmt::info!("Example complete - Test PASSED!");
