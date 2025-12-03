@@ -2,13 +2,13 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use hal::rtc::{RtcDateTime, Rtc};
+use hal::rtc::{RtcDateTime, Rtc, InterruptHandler};
 use embassy_mcxa::bind_interrupts;
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
 
 
 bind_interrupts!(struct Irqs {
-    RTC => hal::rtc::RtcHandler;
+    RTC => InterruptHandler<hal::rtc::Rtc0>;
 });
 
 #[embassy_executor::main]
@@ -19,7 +19,7 @@ async fn main(_spawner: Spawner) {
 
     let rtc_config = hal::rtc::get_default_config();
 
-    let mut rtc = Rtc::new(p.RTC0, rtc_config);
+    let mut rtc = Rtc::new(p.RTC0, Irqs, rtc_config);
 
     let now = RtcDateTime {
         year: 2025,

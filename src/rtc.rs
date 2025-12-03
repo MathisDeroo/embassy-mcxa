@@ -1,7 +1,7 @@
 //! RTC DateTime driver.
 use embassy_hal_internal::{Peri, PeripheralType};
-use embassy_hal_internal::interrupt::InterruptExt;
-
+use core::marker::PhantomData;
+use crate::interrupt::typelevel::{Interrupt, Handler};
 use maitake_sync::WaitCell;
 
 use crate::clocks::with_clocks;
@@ -13,14 +13,21 @@ type Regs = pac::rtc0::RegisterBlock;
 /// Global wait cell for alarm notifications
 static WAKER: WaitCell = WaitCell::new();
 
+/// RTC interrupt handler.
+pub struct InterruptHandler<I: Instance> {
+    _phantom: PhantomData<I>,
+}
+
 /// Trait for RTC peripheral instances
 pub trait Instance: PeripheralType {
+    type Interrupt: Interrupt;
     fn ptr() -> *const Regs;
 }
 
 /// Token for RTC0
 pub type Rtc0 = crate::peripherals::RTC0;
 impl Instance for crate::peripherals::RTC0 {
+    type Interrupt = crate::interrupt::typelevel::RTC;
     #[inline(always)]
     fn ptr() -> *const Regs {
         pac::Rtc0::ptr()
@@ -202,7 +209,11 @@ pub struct Rtc<'a, I: Instance> {
 
 impl<'a, I: Instance> Rtc<'a, I> {
     /// Create a new instance of the real time clock.
-    pub fn new(_inst: Peri<'a, I>, config: RtcConfig) -> Self {
+    pub fn new(
+        _inst: Peri<'a, I>,
+        _irq: impl crate::interrupt::typelevel::Binding<I::Interrupt, InterruptHandler<I>> + 'a,
+        config: RtcConfig,
+    ) -> Self {
         let rtc = unsafe { &*I::ptr() };
 
         // The RTC is NOT gated by the MRCC, but we DO need to make sure the 16k clock
@@ -229,9 +240,8 @@ impl<'a, I: Instance> Rtc<'a, I> {
         });
 
         // Enable RTC interrupt
-        unsafe {
-            crate::pac::interrupt::RTC.enable();
-        }
+        I::Interrupt::unpend();
+        unsafe { I::Interrupt::enable() };
 
         Self {
             _inst: core::marker::PhantomData,
@@ -421,8 +431,7 @@ impl<'a, I: Instance> Rtc<'a, I> {
 /// RTC interrupt handler
 /// 
 /// This struct implements the interrupt handler for RTC events.
-pub struct RtcHandler;
-impl crate::interrupt::typelevel::Handler<crate::interrupt::typelevel::RTC> for RtcHandler {
+impl<T: Instance> Handler<T::Interrupt> for InterruptHandler<T> {
     unsafe fn on_interrupt() {
         let rtc = &*pac::Rtc0::ptr();
         // Check if this is actually a time alarm interrupt
