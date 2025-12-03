@@ -417,9 +417,15 @@ impl<'a, I: Instance> Rtc<'a, I> {
 
     /// Wait for an RTC alarm to trigger.
     ///
+    /// # Arguments
+    /// 
+    /// * `alarm` - The date and time when the alarm should trigger
     /// This function will wait until the RTC alarm is triggered.
     /// If no alarm is scheduled, it will wait indefinitely until one is scheduled and triggered.
-    pub async fn wait_for_alarm(&mut self) {
+    pub async fn wait_for_alarm(&mut self, alarm: RtcDateTime) {
+        self.set_alarm(alarm);
+        self.start();
+
         let wait = WAKER.subscribe().await;
         wait.await;
 

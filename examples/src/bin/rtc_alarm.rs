@@ -38,15 +38,11 @@ async fn main(_spawner: Spawner) {
     let mut alarm = now;
     alarm.second += 10;
 
-    rtc.set_alarm(alarm);
     defmt::info!("Alarm set for: 2025-10-15 14:30:10 (+10 seconds)");
-
-    rtc.start();
-
     defmt::info!("RTC started, waiting for alarm...");
 
     loop {
-        rtc.wait_for_alarm().await;
+        rtc.wait_for_alarm(alarm).await;
         defmt::info!("*** ALARM TRIGGERED! ***");
         break;
     }
