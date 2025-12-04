@@ -2,10 +2,9 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use hal::rtc::{RtcDateTime, Rtc, InterruptHandler};
 use embassy_mcxa::bind_interrupts;
+use hal::rtc::{InterruptHandler, Rtc, RtcDateTime};
 use {defmt_rtt as _, embassy_mcxa as hal, panic_probe as _};
-
 
 bind_interrupts!(struct Irqs {
     RTC => InterruptHandler<hal::rtc::Rtc0>;
