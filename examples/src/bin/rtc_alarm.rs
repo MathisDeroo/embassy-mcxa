@@ -40,11 +40,8 @@ async fn main(_spawner: Spawner) {
     defmt::info!("Alarm set for: 2025-10-15 14:30:10 (+10 seconds)");
     defmt::info!("RTC started, waiting for alarm...");
 
-    loop {
-        rtc.wait_for_alarm(alarm).await;
-        defmt::info!("*** ALARM TRIGGERED! ***");
-        break;
-    }
+    rtc.wait_for_alarm(alarm).await;
+    defmt::info!("*** ALARM TRIGGERED! ***");
 
     defmt::info!("Example complete - Test PASSED!");
 }
